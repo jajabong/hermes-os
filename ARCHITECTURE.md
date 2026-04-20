@@ -1,30 +1,34 @@
 # Hermes OS Architecture
 
-## First Principles
+## 核心定义
 
-### What is an AI-Native Operating System?
+**Hermes OS = hermes-agent。** 基于 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent)，专注服务 100 用户。
 
-Traditional OS:
-- Manages resources (CPU, memory, disk, network)
-- Provides interfaces (CLI, GUI)
-- Human initiates actions
+## 第一性原理
 
-AI-Native OS:
-- Manages **AI capabilities** (LLMs, Agents, Skills)
-- Provides **intent understanding** (natural language)
-- AI **orchestrates** actions
+### 什么是 AI-Native Operating System？
 
-### The Core Problem We Solve
+传统 OS：
+- 管理资源（CPU、内存、磁盘、网络）
+- 提供接口（CLI、GUI）
+- 人类发起操作
 
-**Current State (Chaos):**
+AI-Native OS：
+- 管理 **AI 能力**（LLM、Agent、Skills）
+- 提供 **意图理解**（自然语言）
+- AI **编排**操作
+
+### 我们解决的核心问题
+
+**当前状态（混乱）：**
 ```
 用户 → 需要想：用哪个工具？
-  - Oct-OS？Claude Code？手动操作？
+  - Claude Code？手动操作？
   - 它们怎么配合？
   - 结果怎么汇总？
 ```
 
-**Target State (Hermes OS):**
+**目标状态（Hermes OS）：**
 ```
 用户 → "帮我修这个 bug，然后部署到服务器"
            ↓
@@ -35,7 +39,7 @@ AI-Native OS:
     用户得到结果
 ```
 
-## Architecture Layers
+## 架构层次
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -44,37 +48,38 @@ AI-Native OS:
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│                    Hermes OS 协调层                          │
+│                 Hermes OS 协调层（hermes-agent）              │
 │  ┌─────────────┐  ┌─────────────┐  ┌──────────────────┐  │
-│  │ Intent      │  │ Agent       │  │ Task             │  │
-│  │ Understanding│  │ Discovery   │  │ Orchestration    │  │
+│  │ Intent      │  │ Agent      │  │ Task            │  │
+│  │ Understanding│ │ Discovery  │  │ Orchestration   │  │
 │  └─────────────┘  └─────────────┘  └──────────────────┘  │
 │  ┌─────────────┐  ┌─────────────┐  ┌──────────────────┐  │
-│  │ Cross-Agent │  │ Result      │  │ Learning &       │  │
-│  │ Memory      │  │ Aggregation │  │ Adaptation       │  │
+│  │ Cross-Agent │  │ Result      │  │ Learning &      │  │
+│  │ Memory      │  │ Aggregation │  │ Adaptation      │  │
 │  └─────────────┘  └─────────────┘  └──────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
-                            ↓ 协议调用
+                            ↓ Skill 调用
 ┌─────────────────────────────────────────────────────────────┐
 │                    Agent 层                                  │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐      │
-│  │ Oct-OS  │  │Claude   │  │ Gemini  │  │ OpenBee │      │
-│  │         │  │ Code    │  │ CLI     │  │         │      │
-│  │ 自主探索 │  │ 代码专家 │  │ 大上下文 │  │ 并行执行 │      │
-│  │ 24/7    │  │ REPL    │  │ 分析    │  │ DAG     │      │
-│  └─────────┘  └─────────┘  └─────────┘  └─────────┘      │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐     │
+│  │ Claude  │  │ Gemini  │  │ OpenMind│  │ OpenBee │     │
+│  │ Code    │  │ CLI     │  │         │  │         │     │
+│  │ 代码专家 │  │ 大上下文 │  │ 价值发现 │  │ 并行执行 │     │
+│  │ REPL    │  │ 分析    │  │ 研究分析 │  │ DAG     │     │
+│  └─────────┘  └─────────┘  └─────────┘  └─────────┘     │
+│         （按需扩展，暂不实现）                              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Core Components
+## 核心组件
 
 ### 1. Intent Understanding Layer
 
-**Responsibility**: Parse natural language into structured intent
+**职责**：将自然语言解析为结构化意图
 
-**Input**: "帮我修这个 bug，然后部署到服务器"
+**输入**："帮我修这个 bug，然后部署到服务器"
 
-**Output**:
+**输出**：
 ```json
 {
   "intents": [
@@ -84,13 +89,11 @@ AI-Native OS:
 }
 ```
 
-**Key Challenge**: Intent disambiguation and decomposition
-
 ### 2. Agent Discovery Protocol
 
-**Responsibility**: Know what each Agent can do
+**职责**：知道每个 Agent 能做什么
 
-**Mechanism**: Skills Declaration
+**机制**：Skills 声明
 ```
 Agent 启动时声明自己的 Skills：
   skills/
@@ -104,73 +107,57 @@ Agent 启动时声明自己的 Skills：
 
 ### 3. Task Orchestration
 
-**Responsibility**: Route tasks to correct Agents, handle dependencies
+**职责**：将任务路由到正确的 Agent，处理依赖关系
 
-**Key Concepts**:
-- **Task Graph**: DAG of tasks with dependencies
-- **Agent Pool**: Available Agents and their current status
-- **Routing**: Match tasks to best-fit Agents
+**关键概念**：
+- **Task Graph**：带依赖关系的任务 DAG
+- **Agent Pool**：可用 Agent 及其当前状态
+- **Routing**：将任务匹配到最合适的 Agent
 
 ### 4. Cross-Agent Memory
 
-**Responsibility**: Shared context between Agents
+**职责**：Agent 之间的共享上下文
 
-**Design**:
-- Each Agent has private memory
-- Hermes OS maintains shared memory space
-- Agents can read/write shared context
-
-**Implementation Options**:
-1. Octopoda-OS (synrix) — proven memory system
-2. Simple JSON file store
-3. Custom implementation
+**设计**：
+- 每个 Agent 有私有记忆
+- Hermes OS 维护共享记忆空间
+- Agent 可以读写共享上下文
 
 ### 5. Result Aggregation
 
-**Responsibility**: Merge results from multiple Agents
+**职责**：合并多个 Agent 的结果
 
-**Challenge**: Different output formats, partial failures, conflicts
+**挑战**：不同输出格式、部分失败、冲突
 
-## Open Questions
+## 实现路线图
 
-1. **Agent Discovery**: How do Agents register themselves? MCP? HTTP? File-based?
+### Phase 1: MVP（当前）
+- [x] 基本仓库结构（CLAUDE.md）
+- [ ] hermes-agent 配置与部署
+- [ ] 基础 CLI 接口
+- [ ] 多通道接入（Telegram, Feishu 等）
 
-2. **Communication Protocol**: Sync vs async? Blocking vs non-blocking?
+### Phase 2: 集成
+- [ ] Claude Code Skill 集成
+- [ ] Agent 注册协议
+- [ ] 结果聚合
 
-3. **Failure Handling**: What if an Agent crashes? Retry? Fallback?
+### Phase 3: 智能化
+- [ ] 意图理解深化
+- [ ] 从历史学习
+- [ ] 智能路由
 
-4. **User Override**: How does the user intervene in the orchestration?
+### Phase 4: 生态（暂不实现）
+- [ ] OpenMind 集成（价值发现）
+- [ ] OpenBee 集成（并行执行）
+- [ ] Oct-OS 集成（自主探索）
+- [ ] 插件系统
+- [ ] 社区 Skills
 
-5. **Learning**: How does Hermes OS improve routing over time?
-
-## Research: Existing Solutions
+## 参考项目
 
 | Project | Stars | What It Does | Relevance |
 |---------|-------|-------------|-----------|
-| NousResearch/hermes-agent | 99k | Self-improving agent with skills | ⭐ Core reference |
-| RyjoxTechnologies/Octopoda-OS | - | Memory OS for agents | Memory layer |
-| argentos-core | - | Self-hosted AI OS | Similar vision |
-| rivet-dev/agent-os | - | Portable OS for agents | Agent lifecycle |
-
-## Implementation Roadmap
-
-### Phase 1: MVP (Current)
-- [ ] Basic repository structure
-- [ ] Agent registration protocol
-- [ ] Simple task routing
-- [ ] Basic CLI interface
-
-### Phase 2: Integration
-- [ ] Oct-OS integration via MCP
-- [ ] Claude Code integration via Skill
-- [ ] Result aggregation
-
-### Phase 3: Intelligence
-- [ ] Intent understanding
-- [ ] Learning from history
-- [ ] Smart routing
-
-### Phase 4: Ecosystem
-- [ ] Plugin system
-- [ ] Community Skills
-- [ ] Cross-platform support
+| NousResearch/hermes-agent | 99k+ | Self-improving agent with skills | ⭐ 核心参考 |
+| anthropics/claude-code | - | Claude Code CLI | 内置 Skill |
+| oct-os / openbee / openmind | - | Agent 生态组件 | Phase 4 扩展 |

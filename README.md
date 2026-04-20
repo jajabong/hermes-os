@@ -1,90 +1,62 @@
 # Hermes OS
 
-**AI-Native Operating System — Intent routing, multi-agent orchestration, and unified access to AI capabilities.**
-
 > "用户只需要和 Hermes OS 说话，剩下的由 OS 完成。"
 
-## Vision
+**Hermes OS = hermes-agent (NousResearch)。专注服务 100 用户，后续按需扩展 Agent 生态。**
 
-Hermes OS is an AI-native operating system that transforms how humans interact with AI capabilities. Instead of choosing which AI tool to use, users simply express their intent — Hermes OS handles the rest.
+## 核心定义
 
-```
-用户："帮我修这个 bug，然后部署到服务器"
+Hermes OS 基于 [hermes-agent](https://github.com/NousResearch/hermes-agent)，是一个自进化的 AI 原生操作系统：
 
-Hermes OS 自动：
-  1. 理解意图（修 bug + 部署）
-  2. 分发给正确的 Agent
-  3. 协调执行流程
-  4. 汇总结果
-```
+- **意图理解**：自然语言 → 结构化意图
+- **多通道接入**：Telegram, Discord, Feishu/Lark, WhatsApp, Signal, Email, SMS, DingTalk, WeCom, Weixin 等
+- **技能系统**：热插拔 Skills，动态加载
+- **记忆持久化**：跨会话记忆，持续学习用户偏好
+- **自进化**：通过使用不断优化协调模式
+- **Agent 编排**：内置 Claude Code Skill，按需调用外部 Agent
 
-## Architecture
+## 设计原则
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Hermes OS 协调层                         │
-│  ├── Intent Understanding（意图理解）                        │
-│  ├── Agent Discovery（Agent 发现）                          │
-│  ├── Task Routing（任务路由）                               │
-│  └── Cross-Agent Memory（跨 Agent 共享记忆）                │
-└─────────────────────────────────────────────────────────────┘
-         │              │              │              │
-    ┌────┴────┐   ┌────┴────┐   ┌────┴────┐   ┌────┴────┐
-    │ Oct-OS  │   │Claude   │   │ Gemini  │   │ OpenBee │
-    │         │   │ Code    │   │ CLI     │   │         │
-    │ 自主探索 │   │ 代码专家 │   │ 大上下文 │   │ 并行执行 │
-    │ 24/7    │   │ REPL    │   │ 分析    │   │ DAG     │
-    └─────────┘   └─────────┘   └─────────┘   └─────────┘
-```
+### 1. OS 作为协调层，而非执行者
 
-## Design Principles
+Hermes OS 是**舞台**，不是**演员**：
+- 协调、路由、编排——不自己做执行
+- 专业 Agent（Claude Code 等）是表演者
+- 清晰关注分离：OS 负责协调，Agent 负责执行
 
-### 1. OS as Coordinator, Not Performer
-
-Hermes OS is the **stage**, not the **actor**:
-- It coordinates, routes, and orchestrates — it doesn't try to do everything itself
-- Specialized Agents (Oct-OS, Claude Code, etc.) are the performers
-- Clear separation of concerns: OS handles coordination, Agents handle execution
-
-### 2. Agent-to-Agent, Not Master-Slave
+### 2. Agent 协作网络，而非主从关系
 
 ```
-错误模型：
-  Hermes OS（主） → 调度 → Oct-OS（从）
-
-正确模型：
-  Hermes OS（协调层）
-       ↕ 协议调用
-  Oct-OS ↔ Claude Code ↔ Gemini CLI
-       （对等的 Agent 网络）
+Hermes OS（协调层）
+     ↕ 协议调用
+Claude Code ↔ 外部 Agent
+     （对等的 Agent 网络）
 ```
 
-### 3. Skills as Capabilities
+### 3. Skills 作为能力声明
 
-Agents declare capabilities through a **Skills protocol**:
-- Simple MD files define what each Agent can do
-- Hermes OS discovers and routes based on available Skills
-- Hot-swappable: add/remove Agents without changing core OS
+Agent 通过 **Skills 协议**声明能力：
+- 简单的 MD 文件定义每个 Agent 能做什么
+- Hermes OS 基于可用 Skills 发现和路由
+- 热插拔：增删 Agent 不影响核心 OS
 
-### 4. Learning Through Use
+### 4. 通过使用自进化
 
-Hermes OS gets smarter over time:
-- Remembers user preferences (which Agent for which task)
-- Learns coordination patterns (which Agents work well together)
-- Improves routing decisions based on success history
+Hermes OS 越用越聪明：
+- 记忆用户偏好（哪个 Agent 适合哪个任务）
+- 学习协调模式（哪些 Agent 配合得好）
+- 基于成功历史改进路由决策
 
-## Status
+## 技术栈
 
-**Early Stage** — This is the initial commit. The architecture is being designed.
+- **核心**：hermes-agent (NousResearch)
+- **开发工具**：OMC (oh-my-claudecode) + ECC (everything-claude-code)
+- **Python**：>= 3.11
 
-## Contributing
+## 状态
 
-This project welcomes contributions. Please see [ARCHITECTURE.md](./ARCHITECTURE.md) for the current design thinking.
+**MVP 阶段** — 使用 OMC + ECC 驱动全自动开发，专注服务 100 用户。
 
 ## License
 
 MIT
-
----
-
-Built with the belief that AI should be accessible to everyone, not just those who know which tool to use.
