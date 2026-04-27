@@ -60,6 +60,10 @@ class UserRouter:
         return self
 
     async def __aexit__(self, *args: object) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        """Release resources: storage connection and knowledge router."""
         await self.storage.close()
         await self.knowledge.close()
 
