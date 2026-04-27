@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from hermes_os.context_injector import ContextInjector
+from hermes_os.knowledge_router import KnowledgeRouter
 from hermes_os.memory_router import MemoryRouter
 from hermes_os.models import Session, User
 from hermes_os.router import GatewayEvent, RoutedRequest, UserRouter
@@ -40,6 +41,13 @@ def mock_memory() -> MagicMock:
 
 
 @pytest.fixture
+def mock_knowledge() -> MagicMock:
+    knowledge = MagicMock(spec=KnowledgeRouter)
+    knowledge.search = AsyncMock(return_value=[])
+    return knowledge
+
+
+@pytest.fixture
 def router(
     mock_registry: MagicMock,
     mock_sessions: MagicMock,
@@ -49,6 +57,21 @@ def router(
         registry=mock_registry,
         sessions=mock_sessions,
         memory=mock_memory,
+    )
+
+
+@pytest.fixture
+def router_with_knowledge(
+    mock_registry: MagicMock,
+    mock_sessions: MagicMock,
+    mock_memory: MagicMock,
+    mock_knowledge: MagicMock,
+) -> UserRouter:
+    return UserRouter(
+        registry=mock_registry,
+        sessions=mock_sessions,
+        memory=mock_memory,
+        knowledge=mock_knowledge,
     )
 
 
@@ -521,3 +544,116 @@ class TestMemoryIntegration:
         # Should still have user context block; no memory results means nothing extra added
         assert "<current_user>" in result.enriched_message
         assert "Alice" in result.enriched_message
+
+
+class TestKnowledgeIntegration:
+    """Tests for KnowledgeRouter.search() integration in route()."""
+
+    @pytest.mark.asyncio
+    async def test_route_searches_knowledge_and_injects_context(
+        self,
+        router_with_knowledge: UserRouter,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        mock_knowledge: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() calls knowledge.search() and injects <knowledge> block."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "What is our deployment process?")
+        mock_sessions.get = AsyncMock(return_value=session)
+        mock_memory.search = AsyncMock(return_value=[])
+        mock_knowledge.search = AsyncMock(return_value=[
+            {
+                "doc_id": "deploy-guide",
+                "title": "Deployment Guide",
+                "content": "Run `make deploy` to deploy to production.",
+            },
+        ])
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="What is our deployment process?",
+            user_name="Alice",
+        )
+        result = await router_with_knowledge.route(event)
+
+        mock_knowledge.search.assert_called_once()
+        call_args = mock_knowledge.search.call_args
+        assert call_args[0][0] == "What is our deployment process?"
+        assert call_args[1]["team"] == alice_user.team
+
+        assert "<knowledge>" in result.enriched_message
+        assert "Deployment Guide" in result.enriched_message
+        assert "make deploy" in result.enriched_message
+
+    @pytest.mark.asyncio
+    async def test_route_knowledge_results_empty_is_noop(
+        self,
+        router_with_knowledge: UserRouter,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        mock_knowledge: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() has no <knowledge> block when knowledge returns no results."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "Hello")
+        mock_sessions.get = AsyncMock(return_value=session)
+        mock_memory.search = AsyncMock(return_value=[])
+        mock_knowledge.search = AsyncMock(return_value=[])
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="Hello",
+            user_name="Alice",
+        )
+        result = await router_with_knowledge.route(event)
+
+        assert "<knowledge>" not in result.enriched_message
+
+    @pytest.mark.asyncio
+    async def test_route_knowledge_results_after_memory(
+        self,
+        router_with_knowledge: UserRouter,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        mock_knowledge: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() injects memory first, then knowledge block."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "How do I deploy?")
+        mock_sessions.get = AsyncMock(return_value=session)
+        mock_memory.search = AsyncMock(return_value=[
+            {"text": "Alice worked on the deploy script last week"},
+        ])
+        mock_knowledge.search = AsyncMock(return_value=[
+            {
+                "doc_id": "deploy-doc",
+                "title": "Deploy Doc",
+                "content": "Use `make deploy`.",
+            },
+        ])
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="How do I deploy?",
+            user_name="Alice",
+        )
+        result = await router_with_knowledge.route(event)
+
+        msg = result.enriched_message
+        assert msg.index("## Relevant Memory") < msg.index("<knowledge>")
+        assert "deploy script" in msg
+        assert "<knowledge>" in msg
+        assert "Deploy Doc" in msg

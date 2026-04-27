@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from hermes_os.context_injector import ContextInjector
+from hermes_os.knowledge_router import KnowledgeRouter
 from hermes_os.memory_router import MemoryRouter
 from hermes_os.models import User
 from hermes_os.session_manager import SessionManager
@@ -39,17 +40,20 @@ class UserRouter:
         registry: UserRegistry | None = None,
         sessions: SessionManager | None = None,
         memory: MemoryRouter | None = None,
+        knowledge: KnowledgeRouter | None = None,
         storage: Storage | None = None,
     ) -> None:
         self.storage = storage or Storage()
         self.registry = registry or UserRegistry(storage=self.storage)
         self.sessions = sessions or SessionManager(storage=self.storage)
         self.memory = memory or MemoryRouter()
+        self.knowledge = knowledge or KnowledgeRouter()
         self.injector = ContextInjector()
 
     async def initialize(self) -> None:
         """Prepare the storage and other async resources."""
         await self.storage.initialize()
+        await self.knowledge.initialize()
 
     async def __aenter__(self) -> UserRouter:
         await self.initialize()
@@ -57,6 +61,7 @@ class UserRouter:
 
     async def __aexit__(self, *args: object) -> None:
         await self.storage.close()
+        await self.knowledge.close()
 
     async def route(self, event: GatewayEvent) -> RoutedRequest:
         """Process a gateway event and return an enriched request for hermes-agent."""
@@ -77,6 +82,10 @@ class UserRouter:
         memory_results = await self.memory.search(user, event.message)
         memory_context = self._format_memory_context(memory_results)
 
+        # Search shared knowledge base for the user's team
+        knowledge_results = await self.knowledge.search(event.message, team=user.team)
+        knowledge_context = self._format_knowledge_context(knowledge_results)
+
         enriched_history = self.injector.inject_history(user, history)
         enriched_message = (
             enriched_history[-1]["content"]
@@ -85,6 +94,8 @@ class UserRouter:
         )
         if memory_context:
             enriched_message = f"{memory_context}\n\n{enriched_message}"
+        if knowledge_context:
+            enriched_message = f"{enriched_message}\n\n{knowledge_context}"
 
         return RoutedRequest(
             user=user,
@@ -99,6 +110,18 @@ class UserRouter:
         lines = ["## Relevant Memory"]
         for r in results:
             lines.append(f"- {r.get('text', '')}")
+        return "\n".join(lines)
+
+    def _format_knowledge_context(self, results: list[dict]) -> str:
+        """Format knowledge search results as a <knowledge> block."""
+        if not results:
+            return ""
+        lines = ["<knowledge>"]
+        for r in results:
+            title = r.get("title", "")
+            content = r.get("content", "")
+            lines.append(f"**{title}**: {content}")
+        lines.append("</knowledge>")
         return "\n".join(lines)
 
     async def store_response(self, user: User, session_id: str, response: str) -> None:
