@@ -51,9 +51,15 @@ class UserRouter:
         """Prepare the storage and other async resources."""
         await self.storage.initialize()
 
+    async def __aenter__(self) -> UserRouter:
+        await self.initialize()
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        await self.storage.close()
+
     async def route(self, event: GatewayEvent) -> RoutedRequest:
         """Process a gateway event and return an enriched request for hermes-agent."""
-        # Now async
         user = await self.registry.upsert_from_pairing(
             platform=event.platform,
             platform_user_id=event.platform_user_id,
@@ -63,10 +69,22 @@ class UserRouter:
         await self.sessions.add_message(user.user_id, "user", event.message)
 
         session = await self.sessions.get(user.user_id)
-        history = session.get_history_for_agent() if session else []
+        if session is None:
+            session = await self.sessions.get_or_create(user.user_id)
+        history = session.get_history_for_agent()
+
+        # Search long-term memory and inject results into context
+        memory_results = await self.memory.search(user, event.message)
+        memory_context = self._format_memory_context(memory_results)
 
         enriched_history = self.injector.inject_history(user, history)
-        enriched_message = enriched_history[-1]["content"] if enriched_history else event.message
+        enriched_message = (
+            enriched_history[-1]["content"]
+            if enriched_history
+            else event.message
+        )
+        if memory_context:
+            enriched_message = f"{memory_context}\n\n{enriched_message}"
 
         return RoutedRequest(
             user=user,
@@ -74,6 +92,16 @@ class UserRouter:
             session_id=session.session_id if session else "",
         )
 
-    async def store_response(self, session_id: str, user_id: str, response: str) -> None:
-        """Record hermes-agent's response in the session."""
-        await self.sessions.add_message(user_id, "assistant", response)
+    def _format_memory_context(self, results: list[dict]) -> str:
+        """Format memory search results as a readable context block."""
+        if not results:
+            return ""
+        lines = ["## Relevant Memory"]
+        for r in results:
+            lines.append(f"- {r.get('text', '')}")
+        return "\n".join(lines)
+
+    async def store_response(self, user: User, session_id: str, response: str) -> None:
+        """Record hermes-agent's response in session and long-term memory."""
+        await self.sessions.add_message(user.user_id, "assistant", response)
+        await self.memory.store(user, response, metadata={"session_id": session_id})

@@ -24,20 +24,7 @@ class User:
             f"name: {self.name}\n"
             f"role: {self.role}\n"
             f"team: {self.team}\n"
-            f"</current_user>\n\n"
-            f"## File Delivery Instructions\n"
-            f"When you generate or have a local file to send to the user:\n"
-            f"- IMMEDIATELY append a line with the absolute file path prefixed by MEDIA:\n"
-            f"  Example: MEDIA:/tmp/report.pdf\n"
-            f"- Do NOT paste file paths as plain text — always use MEDIA: prefix\n"
-            f"- Do NOT try upload services, cloud links, or share links\n"
-            f"- The MEDIA: prefix triggers automatic attachment delivery\n"
-            f"- Supported: PDF, images (png/jpg/gif/webp), video, audio, docx, xlsx, pptx\n\n"
-            f"## Message History\n"
-            f"If the user asks to recall earlier messages, check conversation history,\n"
-            f"or reference what they said before, use the feishu_message_history tool.\n"
-            f"Example: feishu_message_history(chat_id=None, limit=20)\n"
-            f"  (chat_id is optional — it defaults to the current session)\n"
+            f"</current_user>"
         )
 
 

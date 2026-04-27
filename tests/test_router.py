@@ -11,6 +11,7 @@ from hermes_os.memory_router import MemoryRouter
 from hermes_os.models import Session, User
 from hermes_os.router import GatewayEvent, RoutedRequest, UserRouter
 from hermes_os.session_manager import SessionManager
+from hermes_os.storage import Storage
 from hermes_os.user_registry import UserRegistry
 
 # ---------------------------------------------------------------------------
@@ -163,6 +164,9 @@ class TestUserRouterRoute:
         """route() calls registry.upsert_from_pairing with event data."""
         mock_registry.upsert_from_pairing.return_value = alice_user
         router.sessions.get = AsyncMock(return_value=None)
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "Hello")
+        router.sessions.get_or_create = AsyncMock(return_value=session)
 
         event = GatewayEvent(
             platform="telegram",
@@ -266,6 +270,8 @@ class TestUserRouterRoute:
         """route() includes the resolved User in RoutedRequest."""
         mock_registry.upsert_from_pairing.return_value = alice_user
         router.sessions.get = AsyncMock(return_value=None)
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        router.sessions.get_or_create = AsyncMock(return_value=session)
 
         event = GatewayEvent(
             platform="telegram",
@@ -283,11 +289,17 @@ class TestUserRouterRoute:
         self,
         router: UserRouter,
         mock_registry: MagicMock,
+        mock_sessions: MagicMock,
         alice_user: User,
     ) -> None:
         """route() falls back to plain message when session has no history."""
         mock_registry.upsert_from_pairing.return_value = alice_user
-        router.sessions.get = AsyncMock(return_value=None)
+        # sessions.get returns None → should fall back to get_or_create
+        mock_sessions.get = AsyncMock(return_value=None)
+        mock_sessions.get_or_create = AsyncMock()
+        # Simulate a fresh session with no history
+        fresh_session = Session(session_id="fresh_s1", user_id=alice_user.user_id)
+        mock_sessions.get_or_create.return_value = fresh_session
 
         event = GatewayEvent(
             platform="telegram",
@@ -299,6 +311,31 @@ class TestUserRouterRoute:
         result = await router.route(event)
 
         assert result.enriched_message == "Fallback message"
+        assert result.session_id == "fresh_s1"
+
+    @pytest.mark.asyncio
+    async def test_route_none_session_does_not_raise(
+        self,
+        router: UserRouter,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() does not raise when sessions.get returns None."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        mock_sessions.get = AsyncMock(return_value=None)
+        fresh_session = Session(session_id="s2", user_id=alice_user.user_id)
+        mock_sessions.get_or_create = AsyncMock(return_value=fresh_session)
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="Hi",
+            user_name="Alice",
+        )
+        # Should not raise AttributeError
+        result = await router.route(event)
+        assert result.session_id == "s2"
 
 
 # ---------------------------------------------------------------------------
@@ -316,8 +353,171 @@ class TestUserRouterStoreResponse:
         alice_user: User,
     ) -> None:
         """store_response() records the assistant response in the session."""
-        await router.store_response("session_1", alice_user.user_id, "Agent response text")
+        await router.store_response(alice_user, "session_1", "Agent response text")
 
         mock_sessions.add_message.assert_called_once_with(
             alice_user.user_id, "assistant", "Agent response text"
         )
+
+    @pytest.mark.asyncio
+    async def test_store_response_also_stores_in_memory(
+        self,
+        router: UserRouter,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """store_response() persists the assistant response to long-term memory."""
+        await router.store_response(alice_user, "session_1", "Agent response text")
+
+        mock_memory.store.assert_called_once_with(
+            alice_user, "Agent response text", metadata={"session_id": "session_1"}
+        )
+
+
+# ---------------------------------------------------------------------------
+# Memory integration in route()
+# ---------------------------------------------------------------------------
+
+class TestStorageLifecycle:
+    """Tests for Storage lifecycle management."""
+
+    @pytest.mark.asyncio
+    async def test_router_supports_async_context_manager(self) -> None:
+        """UserRouter can be used as an async context manager for clean shutdown."""
+        storage = Storage(db_path=":memory:")
+        router = UserRouter(
+            registry=UserRegistry(storage=storage),
+            sessions=SessionManager(storage=storage),
+            storage=storage,
+        )
+
+        async with router:
+            # Warm up: route one event to open the DB connection
+            await router.initialize()
+            alice_event = GatewayEvent(
+                platform="telegram",
+                platform_user_id="test_123",
+                message="Hello",
+                user_name="Alice",
+            )
+            await router.route(alice_event)
+
+        # After exiting context manager, storage should be closed
+        assert storage._db is None
+
+    @pytest.mark.asyncio
+    async def test_storage_close_is_idempotent(self) -> None:
+        """Calling close() multiple times does not raise."""
+        storage = Storage(db_path=":memory:")
+        await storage.initialize()
+        await storage.close()
+        await storage.close()  # must not raise
+
+
+class TestPlatformAgnosticContext:
+    """Tests that context block is platform-agnostic."""
+
+    def test_context_block_contains_only_user_fields(self) -> None:
+        """Context block has user fields but no platform-specific instructions."""
+        user = User(
+            user_id="test_uid",
+            name="Test User",
+            role="admin",
+            team="alpha",
+            platform="telegram",
+            platform_user_id="123",
+        )
+        block = user.to_context_block()
+
+        assert "<current_user>" in block
+        assert "test_uid" in block
+        assert "Test User" in block
+        assert "admin" in block
+        assert "alpha" in block
+        # Platform-specific instructions must NOT appear in context block
+        assert "feishu" not in block.lower()
+        assert "feishu_message_history" not in block
+        assert "MEDIA:" not in block
+        assert "File Delivery" not in block
+
+
+class TestMemoryIntegration:
+    """Tests for memory.search() integration in route()."""
+
+    @pytest.mark.asyncio
+    async def test_route_searches_memory_and_injects_context(
+        self,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() calls memory.search() and injects results into enriched_message."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "Hello")
+        mock_sessions.get = AsyncMock(return_value=session)
+
+        # Simulate prior memory: user previously mentioned "JavaScript project"
+        mock_memory.search = AsyncMock(return_value=[
+            {"text": "Alice is working on a JavaScript project", "score": 0.9},
+            {"text": "Alice prefers dark mode", "score": 0.8},
+        ])
+
+        router = UserRouter(
+            registry=mock_registry,
+            sessions=mock_sessions,
+            memory=mock_memory,
+        )
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="Hello",
+            user_name="Alice",
+        )
+        result = await router.route(event)
+
+        # Should call memory.search with the user's query
+        mock_memory.search.assert_called_once()
+        call_args = mock_memory.search.call_args
+        assert call_args[0][0] == alice_user  # user object
+        assert call_args[0][1] == "Hello"      # query from event.message
+
+        # Enriched message should contain memory content
+        assert "JavaScript project" in result.enriched_message
+        assert "dark mode" in result.enriched_message
+
+    @pytest.mark.asyncio
+    async def test_route_memory_search_empty_is_noop(
+        self,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() works fine when memory returns no results."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "Hello")
+        mock_sessions.get = AsyncMock(return_value=session)
+        mock_memory.search = AsyncMock(return_value=[])
+
+        router = UserRouter(
+            registry=mock_registry,
+            sessions=mock_sessions,
+            memory=mock_memory,
+        )
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="Hello",
+            user_name="Alice",
+        )
+        result = await router.route(event)
+
+        # Should still have user context block; no memory results means nothing extra added
+        assert "<current_user>" in result.enriched_message
+        assert "Alice" in result.enriched_message

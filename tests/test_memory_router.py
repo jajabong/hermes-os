@@ -78,13 +78,17 @@ class TestMemoryRouterInit:
             assert router._clients == {}
 
     @pytest.mark.asyncio
-    async def test_client_for_raises_without_mem0(self) -> None:
-        """Router raises RuntimeError when _client_for is called and mem0 is unavailable."""
+    async def test_client_for_gracefully_handles_missing_mem0(self) -> None:
+        """Router degrades gracefully when mem0 is unavailable — store/search are no-ops."""
         with patch("hermes_os.memory_router.Memory", None):
             router = MemoryRouter()
             user = User(user_id="test", name="Test", platform="x", platform_user_id="1")
-            with pytest.raises(RuntimeError, match="mem0"):
-                await router.store(user, "memory")
+            # Should not raise — just no-op
+            await router.store(user, "memory")
+            result = await router.search(user, "query")
+            assert result == []
+            all_memories = await router.get_all(user)
+            assert all_memories == []
 
 
 # ---------------------------------------------------------------------------

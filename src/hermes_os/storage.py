@@ -51,6 +51,14 @@ class Storage:
             )
             """
         )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                user_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL
+            )
+            """
+        )
         await db.commit()
 
     async def initialize(self) -> None:
@@ -121,6 +129,28 @@ class Storage:
             return [dict(row) for row in rows]
 
     async def clear_messages(self, user_id: str) -> None:
+        await self._lazy_initialize()
         db = await self._get_db()
         await db.execute("DELETE FROM messages WHERE user_id = ?", (user_id,))
+        await db.commit()
+
+    async def get_session_id(self, user_id: str) -> str | None:
+        """Load persisted session_id for a user, or None if not yet created."""
+        await self._lazy_initialize()
+        db = await self._get_db()
+        async with db.execute(
+            "SELECT session_id FROM sessions WHERE user_id = ?",
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row["session_id"] if row else None
+
+    async def save_session_id(self, user_id: str, session_id: str) -> None:
+        """Persist a user's session_id. Idempotent via INSERT OR REPLACE."""
+        await self._lazy_initialize()
+        db = await self._get_db()
+        await db.execute(
+            "INSERT OR REPLACE INTO sessions (user_id, session_id) VALUES (?, ?)",
+            (user_id, session_id),
+        )
         await db.commit()

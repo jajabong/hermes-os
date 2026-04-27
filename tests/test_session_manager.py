@@ -270,6 +270,44 @@ class TestSessionModel:
         session = Session(session_id="s1", user_id="u1")
         assert session.get_history_for_agent() == []
 
+    # --- session_id stability ---
+
+    @pytest.mark.asyncio
+    async def test_session_id_is_stable_across_loads(self, manager: SessionManager) -> None:
+        """Same user always gets the same session_id, even after re-load from storage."""
+        session1 = await manager.get_or_create("alice")
+        first_id = session1.session_id
+
+        # Simulate process restart: drop in-memory cache and reload
+        manager._sessions.clear()
+        session2 = await manager.get_or_create("alice")
+
+        assert session2.session_id == first_id, (
+            f"session_id changed after reload: {first_id} != {session2.session_id}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_add_message_preserves_existing_session_id(
+        self, manager: SessionManager
+    ) -> None:
+        """add_message does not change session_id for an existing session."""
+        await manager.get_or_create("alice")
+        original_id = manager._sessions["alice"].session_id
+
+        # Re-create via add_message path (session already in memory)
+        await manager.add_message("alice", "user", "Hello")
+        assert manager._sessions["alice"].session_id == original_id
+
+        # Simulate eviction then add_message
+        manager._sessions.clear()
+        await manager.add_message("alice", "user", "Hello again")
+        post_add_id = manager._sessions["alice"].session_id
+
+        # Should load existing history and keep original session_id
+        manager._sessions.clear()
+        session3 = await manager.get_or_create("alice")
+        assert session3.session_id == post_add_id
+
     def test_conversation_history_order(self) -> None:
         """Messages are stored in insertion order."""
         session = Session(session_id="s1", user_id="u1")
