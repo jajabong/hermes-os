@@ -52,6 +52,9 @@ class Storage:
             """
         )
         await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_user_timestamp ON messages(user_id, timestamp)"
+        )
+        await db.execute(
             """
             CREATE TABLE IF NOT EXISTS sessions (
                 user_id TEXT PRIMARY KEY,
