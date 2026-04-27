@@ -108,3 +108,23 @@ class KnowledgeRouter:
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+    async def delete_document(self, doc_id: str) -> None:
+        """Delete a document by doc_id. No-op if missing."""
+        await self.initialize()
+        db = await self._get_db()
+        await db.execute("DELETE FROM knowledge_docs WHERE doc_id = ?", (doc_id,))
+        await db.execute("DELETE FROM knowledge_docs_fts WHERE doc_id = ?", (doc_id,))
+        await db.commit()
+
+    async def list_documents(self, team: str) -> list[dict]:
+        """Return all documents for a team, newest first."""
+        await self.initialize()
+        db = await self._get_db()
+        async with db.execute(
+            "SELECT doc_id, title, content, updated_at FROM knowledge_docs "
+            "WHERE team = ? ORDER BY updated_at DESC",
+            (team,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
