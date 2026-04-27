@@ -1,10 +1,6 @@
 """Integration test: hermes-os gateway hook end-to-end."""
 
-import asyncio
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path.home() / "hermes-os" / "src"))
+import pytest
 
 from hermes_os.memory_router import MemoryRouter
 from hermes_os.router import GatewayEvent, UserRouter
@@ -13,8 +9,8 @@ from hermes_os.storage import Storage
 from hermes_os.user_registry import UserRegistry
 
 
-async def test_hook_integration():
-    # Use in-memory storage for test isolation
+@pytest.fixture
+async def router() -> UserRouter:
     storage = Storage(db_path=":memory:")
     router = UserRouter(
         registry=UserRegistry(storage=storage),
@@ -23,7 +19,11 @@ async def test_hook_integration():
         storage=storage,
     )
     await router.storage.initialize()
+    return router
 
+
+@pytest.mark.asyncio
+async def test_hook_integration(router: UserRouter) -> None:
     # --- User Alice (Telegram) ---
     alice_event = GatewayEvent(
         platform="telegram",
@@ -32,9 +32,6 @@ async def test_hook_integration():
         user_name="Alice",
     )
     alice_routed = await router.route(alice_event)
-
-    print(f"Alice user_id: {alice_routed.user.user_id}")
-    print(f"Alice enriched message:\n{alice_routed.enriched_message[:300]}...")
 
     # --- User Bob (Discord) ---
     bob_event = GatewayEvent(
@@ -45,22 +42,11 @@ async def test_hook_integration():
     )
     bob_routed = await router.route(bob_event)
 
-    print(f"\nBob user_id: {bob_routed.user.user_id}")
-    print(f"Bob enriched message:\n{bob_routed.enriched_message[:300]}...")
-
-    # --- Verify isolation ---
-    assert alice_routed.user.user_id != bob_routed.user.user_id, "User IDs must differ"
+    # Verify isolation
+    assert alice_routed.user.user_id != bob_routed.user.user_id
     assert "<current_user>" in alice_routed.enriched_message
     assert "<current_user>" in bob_routed.enriched_message
     assert "Alice" in alice_routed.enriched_message
     assert "Bob" in bob_routed.enriched_message
-    # Alice's message must NOT contain Bob's name
     assert "Bob" not in alice_routed.enriched_message
     assert "Alice" not in bob_routed.enriched_message
-
-    print("\n✅ Context isolation verified — Alice and Bob are fully isolated")
-    return True
-
-
-if __name__ == "__main__":
-    asyncio.run(test_hook_integration())
