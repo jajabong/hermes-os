@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from hermes_os.brain_indexer import BrainIndexer, BrainIndex
 from hermes_os.context_injector import ContextInjector
 from hermes_os.knowledge_router import KnowledgeRouter
 from hermes_os.memory_router import MemoryRouter
@@ -44,12 +45,14 @@ class UserRouter:
         memory: MemoryRouter | None = None,
         knowledge: KnowledgeRouter | None = None,
         storage: Storage | None = None,
+        brain: BrainIndexer | None = None,
     ) -> None:
         self.storage = storage or Storage()
         self.registry = registry or UserRegistry(storage=self.storage)
         self.sessions = sessions or SessionManager(storage=self.storage)
         self.memory = memory or MemoryRouter()
         self.knowledge = knowledge or KnowledgeRouter()
+        self.brain = brain or BrainIndexer()
         self.injector = ContextInjector()
 
     async def initialize(self) -> None:
@@ -94,10 +97,16 @@ class UserRouter:
         knowledge_results = await self.knowledge.search(event.message, team=user.team)
         knowledge_context = self._format_knowledge_context(knowledge_results)
 
-        # Build enriched message: user block + memory + original message + knowledge
+        # Index user's brain directory for project context
+        brain_index = await self.brain.index_user(user.user_id)
+        brain_context = self._format_brain_context(brain_index)
+
+        # Build enriched message: user block + memory + brain + original message + knowledge
         enriched_message = self.injector.inject(user, event.message, event.profile)
         if memory_context:
             enriched_message = f"{memory_context}\n\n{enriched_message}"
+        if brain_context:
+            enriched_message = f"{brain_context}\n\n{enriched_message}"
         if knowledge_context:
             enriched_message = f"{enriched_message}\n\n{knowledge_context}"
 
@@ -131,6 +140,29 @@ class UserRouter:
             lines.append(f"**{title}**: {content}")
         lines.append("</knowledge>")
         return "\n".join(lines)
+
+    def _format_brain_context(self, brain_index: "BrainIndex") -> str:
+        """Format BrainIndex as a <brain> context block injected into enriched_message."""
+        parts = []
+
+        # Active projects
+        if brain_index.active_projects:
+            projects_str = "、".join(brain_index.active_projects)
+            parts.append(f"**当前项目**: {projects_str}")
+
+        # Memory summary
+        if brain_index.memory_summary:
+            parts.append(f"**记忆摘要**: {brain_index.memory_summary}")
+
+        # Recent wiki updates
+        if brain_index.recent_wiki_updates:
+            updates_str = "、".join(brain_index.recent_wiki_updates[-5:])
+            parts.append(f"**最近更新**: {updates_str}")
+
+        if not parts:
+            return ""
+
+        return "<brain>\n" + "\n".join(parts) + "\n</brain>"
 
     async def store_response(self, user: User, session_id: str, response: str) -> None:
         """Record hermes-agent's response in session and long-term memory."""

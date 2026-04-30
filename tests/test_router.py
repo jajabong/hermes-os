@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from hermes_os.brain_indexer import BrainIndexer, BrainIndex
 from hermes_os.context_injector import ContextInjector
 from hermes_os.knowledge_router import KnowledgeRouter
 from hermes_os.memory_router import MemoryRouter
@@ -48,15 +49,28 @@ def mock_knowledge() -> MagicMock:
 
 
 @pytest.fixture
+def mock_brain() -> MagicMock:
+    brain = MagicMock(spec=BrainIndexer)
+    brain.index_user = AsyncMock(return_value=BrainIndex(
+        user_id="default",
+        memory_summary="",
+        active_projects=[],
+    ))
+    return brain
+
+
+@pytest.fixture
 def router(
     mock_registry: MagicMock,
     mock_sessions: MagicMock,
     mock_memory: MagicMock,
+    mock_brain: MagicMock,
 ) -> UserRouter:
     return UserRouter(
         registry=mock_registry,
         sessions=mock_sessions,
         memory=mock_memory,
+        brain=mock_brain,
     )
 
 
@@ -66,12 +80,14 @@ def router_with_knowledge(
     mock_sessions: MagicMock,
     mock_memory: MagicMock,
     mock_knowledge: MagicMock,
+    mock_brain: MagicMock,
 ) -> UserRouter:
     return UserRouter(
         registry=mock_registry,
         sessions=mock_sessions,
         memory=mock_memory,
         knowledge=mock_knowledge,
+        brain=mock_brain,
     )
 
 
@@ -658,3 +674,185 @@ class TestKnowledgeIntegration:
         assert "deploy script" in msg
         assert "<knowledge>" in msg
         assert "Deploy Doc" in msg
+
+
+# ---------------------------------------------------------------------------
+# Brain integration in route()
+# ---------------------------------------------------------------------------
+
+class TestBrainIntegration:
+    """Tests for BrainIndexer integration in route()."""
+
+    @pytest.mark.asyncio
+    async def test_route_calls_brain_indexer_for_user(
+        self,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() calls brain_indexer.index_user() to load brain context."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "Hello")
+        mock_sessions.get = AsyncMock(return_value=session)
+        mock_memory.search = AsyncMock(return_value=[])
+
+        mock_brain = MagicMock(spec=BrainIndexer)
+        mock_brain.index_user = AsyncMock(return_value=BrainIndex(
+            user_id=alice_user.user_id,
+            memory_summary="Alice正在开发Hermes-OS项目",
+            user_profile={"name": "Alice", "role": "项目经理"},
+            active_projects=["Hermes-OS", "AI项目"],
+            recent_wiki_updates=["Hermes-OS v0.3"],
+        ))
+
+        router = UserRouter(
+            registry=mock_registry,
+            sessions=mock_sessions,
+            memory=mock_memory,
+            brain=mock_brain,
+        )
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="Hello",
+            user_name="Alice",
+        )
+        result = await router.route(event)
+
+        mock_brain.index_user.assert_called_once_with(alice_user.user_id)
+        # Project context should appear in enriched_message
+        assert "Hermes-OS" in result.enriched_message
+
+    @pytest.mark.asyncio
+    async def test_route_injects_brain_project_context(
+        self,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() injects active_projects from BrainIndex into enriched_message."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "项目进展如何")
+        mock_sessions.get = AsyncMock(return_value=session)
+        mock_memory.search = AsyncMock(return_value=[])
+
+        mock_brain = MagicMock(spec=BrainIndexer)
+        mock_brain.index_user = AsyncMock(return_value=BrainIndex(
+            user_id=alice_user.user_id,
+            memory_summary="项目进展顺利",
+            active_projects=["政务系统", "数据分析平台"],
+        ))
+
+        router = UserRouter(
+            registry=mock_registry,
+            sessions=mock_sessions,
+            memory=mock_memory,
+            brain=mock_brain,
+        )
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="项目进展如何",
+            user_name="Alice",
+        )
+        result = await router.route(event)
+
+        # Should contain project info in context
+        assert "政务系统" in result.enriched_message
+        assert "数据分析平台" in result.enriched_message
+
+    @pytest.mark.asyncio
+    async def test_route_brain_context_appears_before_knowledge(
+        self,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        mock_knowledge: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """Brain context appears before <knowledge> block in enriched_message."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "进展如何")
+        mock_sessions.get = AsyncMock(return_value=session)
+        mock_memory.search = AsyncMock(return_value=[])
+        mock_knowledge.search = AsyncMock(return_value=[
+            {"doc_id": "p1", "title": "项目指南", "content": "内容"},
+        ])
+
+        mock_brain = MagicMock(spec=BrainIndexer)
+        mock_brain.index_user = AsyncMock(return_value=BrainIndex(
+            user_id=alice_user.user_id,
+            active_projects=["TestProject"],
+        ))
+
+        router = UserRouter(
+            registry=mock_registry,
+            sessions=mock_sessions,
+            memory=mock_memory,
+            knowledge=mock_knowledge,
+            brain=mock_brain,
+        )
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="进展如何",
+            user_name="Alice",
+        )
+        result = await router.route(event)
+
+        msg = result.enriched_message
+        # Brain project context should appear before knowledge block
+        brain_pos = msg.find("TestProject")
+        knowledge_pos = msg.find("<knowledge>")
+        assert brain_pos < knowledge_pos, \
+            f"Brain context ({brain_pos}) should appear before <knowledge> ({knowledge_pos})"
+
+    @pytest.mark.asyncio
+    async def test_route_brain_not_called_when_user_has_no_brain(
+        self,
+        mock_registry: MagicMock,
+        mock_sessions: MagicMock,
+        mock_memory: MagicMock,
+        alice_user: User,
+    ) -> None:
+        """route() works when brain directory does not exist (returns empty index)."""
+        mock_registry.upsert_from_pairing.return_value = alice_user
+        session = Session(session_id="s1", user_id=alice_user.user_id)
+        session.add_message("user", "Hello")
+        mock_sessions.get = AsyncMock(return_value=session)
+        mock_memory.search = AsyncMock(return_value=[])
+
+        mock_brain = MagicMock(spec=BrainIndexer)
+        # index_user returns empty BrainIndex for nonexistent user
+        mock_brain.index_user = AsyncMock(return_value=BrainIndex(
+            user_id=alice_user.user_id,
+            memory_summary="",
+            active_projects=[],
+        ))
+
+        router = UserRouter(
+            registry=mock_registry,
+            sessions=mock_sessions,
+            memory=mock_memory,
+            brain=mock_brain,
+        )
+
+        event = GatewayEvent(
+            platform="telegram",
+            platform_user_id="111",
+            message="Hello",
+            user_name="Alice",
+        )
+        result = await router.route(event)
+
+        # Should still return valid enriched message
+        assert "<current_user>" in result.enriched_message
+        assert result.session_id == "s1"

@@ -187,7 +187,7 @@ class TestWorkflowEngineToolRegistry:
     @pytest.mark.asyncio
     async def test_call_registered_tool(self) -> None:
         engine = WorkflowEngine()
-        engine.register_tool("echo", lambda **kwargs: f"echo: {kwargs.get('msg', '')}")
+        engine.register_tool("echo", lambda args, **_: f"echo: {args.get('msg', '')}")
         result = await engine._execute_tool("echo", {"msg": "hello"})
         assert result == "echo: hello"
 

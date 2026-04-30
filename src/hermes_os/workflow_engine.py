@@ -123,7 +123,8 @@ class WorkflowEngine:
             return f"[Tool not found: {tool_name}]"
 
         try:
-            result = handler(**args)
+            # hermes-agent tool handlers take (args: dict, **kwargs)
+            result = handler(args, **{})
             if asyncio.iscoroutine(result):
                 result = await result
             return str(result)
@@ -205,12 +206,6 @@ class WorkflowEngine:
                     args={},
                     description="获取任务列表",
                 ),
-                WorkflowStep(
-                    tool_name="feishu_doc_search",
-                    action="query",
-                    args={"query": "{project_name}"},
-                    description="搜索项目文档",
-                ),
             ],
             context_template="Project: {project_name}",
             output_format="feishu_card",
@@ -249,12 +244,6 @@ class WorkflowEngine:
             user_id="",
             name="project_research",
             steps=[
-                WorkflowStep(
-                    tool_name="web_search",
-                    action="search",
-                    args={"query": "{topic}"},
-                    description="搜索网上情报",
-                ),
                 WorkflowStep(
                     tool_name="feishu_doc_search",
                     action="query",
