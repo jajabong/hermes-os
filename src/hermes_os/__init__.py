@@ -32,6 +32,13 @@ from hermes_os.doc_workflow import (
     DocWorkflowEngine,
     DocWorkflowResult,
 )
+from hermes_os.content_generator import ContentGeneratorAgent, ContentType, GenerationResult
+from hermes_os.research_workflow import (
+    ResearchWorkflowEngine,
+    IntelligenceSource,
+    IntelligenceResult,
+    RiskFlag,
+)
 
 __version__ = "0.3.0"
 
@@ -81,4 +88,13 @@ __all__ = [
     "ApprovalFlow",
     "DocWorkflowEngine",
     "DocWorkflowResult",
+    # Content Generation
+    "ContentGeneratorAgent",
+    "ContentType",
+    "GenerationResult",
+    # Research Workflow
+    "ResearchWorkflowEngine",
+    "IntelligenceSource",
+    "IntelligenceResult",
+    "RiskFlag",
 ]
