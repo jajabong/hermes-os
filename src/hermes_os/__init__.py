@@ -25,6 +25,13 @@ from hermes_os.brain_updater import BrainUpdater
 from hermes_os.emotion_engine import EmotionEngine
 from hermes_os.emotion_types import EmotionState, ToneConfig
 from hermes_os.personality_tuner import PersonalityTuner, TonePreference
+from hermes_os.hermes_tool_registry import HermesToolRegistry, get_tool_registry
+from hermes_os.doc_workflow import (
+    DocType,
+    ApprovalFlow,
+    DocWorkflowEngine,
+    DocWorkflowResult,
+)
 
 __version__ = "0.3.0"
 
@@ -66,4 +73,12 @@ __all__ = [
     "ToneConfig",
     "PersonalityTuner",
     "TonePreference",
+    # Tool Registry
+    "HermesToolRegistry",
+    "get_tool_registry",
+    # Government Documents
+    "DocType",
+    "ApprovalFlow",
+    "DocWorkflowEngine",
+    "DocWorkflowResult",
 ]

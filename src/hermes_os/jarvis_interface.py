@@ -18,7 +18,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from hermes_os.emotion_engine import EmotionState
+from hermes_os.emotion_types import TonePreference
 from hermes_os.feishu_enhancer import FeishuEnhancer
+from hermes_os.personality_tuner import PersonalityTuner
 from hermes_os.user_file_manager import UserFileManager
 
 logger = logging.getLogger(__name__)
@@ -36,9 +39,11 @@ class JarvisInterface:
         self,
         feishu_enhancer: FeishuEnhancer | None = None,
         file_manager: UserFileManager | None = None,
+        personality_tuner: PersonalityTuner | None = None,
     ) -> None:
         self._feishu = feishu_enhancer or FeishuEnhancer()
         self._files = file_manager or UserFileManager()
+        self._tuner = personality_tuner or PersonalityTuner()
 
     # -------------------------------------------------------------------------
     # Core send methods
@@ -52,6 +57,8 @@ class JarvisInterface:
         actions: list[dict[str, Any]],
         nl_summary: str,
         task_id: str | None = None,
+        emotion: EmotionState = EmotionState.NEUTRAL,
+        preference: TonePreference = TonePreference.RELAXED,
     ) -> None:
         """
         Send a Feishu card AND save to user file directory.
@@ -63,7 +70,15 @@ class JarvisInterface:
             actions: List of button descriptors [{text, value, type, task_id}]
             nl_summary: Natural language summary for file storage
             task_id: Optional task ID for file path organization
+            emotion: EmotionState for tone adjustment
+            preference: TonePreference for personality tuning
         """
+        # Format nl_summary with personality tuner
+        formatted_nl = self._tuner.format_notification(
+            base_message=nl_summary,
+            emotion=emotion,
+            preference=preference,
+        )
         card_payload = self._build_card(title, content, actions)
 
         # Send via Feishu
@@ -83,7 +98,7 @@ class JarvisInterface:
                 user_id=user_id,
                 task_id=task_id,
                 card_payload=card_payload,
-                nl_summary=nl_summary,
+                nl_summary=formatted_nl,
             )
 
         logger.info(
@@ -100,6 +115,8 @@ class JarvisInterface:
         progress: float,
         detail: str | None = None,
         task_id: str | None = None,
+        emotion: EmotionState = EmotionState.NEUTRAL,
+        preference: TonePreference = TonePreference.RELAXED,
     ) -> None:
         """
         Send a task progress update as natural language + file save.
@@ -110,14 +127,23 @@ class JarvisInterface:
             progress: 0.0 to 1.0
             detail: Optional additional context
             task_id: Optional for file storage
+            emotion: EmotionState for tone adjustment
+            preference: TonePreference for personality tuning
         """
         pct = int(progress * 100)
         nl = f"📋 [{pct}%] {task_title}"
         if detail:
             nl += f"\n{detail}"
 
+        # Format with personality tuner
+        formatted_nl = self._tuner.format_notification(
+            base_message=nl,
+            emotion=emotion,
+            preference=preference,
+        )
+
         try:
-            await self._feishu.send_message_to_user(user_id=user_id, message=nl)
+            await self._feishu.send_message_to_user(user_id=user_id, message=formatted_nl)
         except Exception as e:
             logger.warning("Feishu progress send failed for user %s: %s", user_id, e)
 
@@ -126,7 +152,7 @@ class JarvisInterface:
                 user_id=user_id,
                 task_id=task_id,
                 card_payload={"type": "progress_update", "progress": progress, "detail": detail},
-                nl_summary=nl,
+                nl_summary=formatted_nl,
             )
 
     async def send_confirmation_request(
@@ -137,6 +163,8 @@ class JarvisInterface:
         accept_text: str = "立即执行",
         decline_text: str = "拦截任务",
         metadata: dict | None = None,
+        emotion: EmotionState = EmotionState.NEUTRAL,
+        preference: TonePreference = TonePreference.RELAXED,
     ) -> None:
         """
         Send a confirmation card with Accept/Decline buttons.
@@ -151,6 +179,8 @@ class JarvisInterface:
             accept_text: Button text for accept
             decline_text: Button text for decline
             metadata: Additional context for the confirmation
+            emotion: EmotionState for tone adjustment
+            preference: TonePreference for personality tuning
         """
         actions = [
             {"text": accept_text, "value": "run_now", "type": "primary", "task_id": task_id},
@@ -159,6 +189,13 @@ class JarvisInterface:
 
         content = f"**任务**: {question}\n\n请确认是否继续执行。"
         nl_summary = f"确认请求: {question}"
+
+        # Format nl_summary with personality tuner
+        formatted_nl = self._tuner.format_notification(
+            base_message=nl_summary,
+            emotion=emotion,
+            preference=preference,
+        )
 
         card_payload = self._build_card(
             title=f"🤖 Jarvis: 意图确认 - {task_id[:8]}...",
@@ -182,7 +219,7 @@ class JarvisInterface:
             user_id=user_id,
             task_id=task_id,
             card_payload=card_payload,
-            nl_summary=nl_summary,
+            nl_summary=formatted_nl,
         )
 
         logger.info(
@@ -197,6 +234,8 @@ class JarvisInterface:
         task_title: str,
         result_summary: str,
         task_id: str | None = None,
+        emotion: EmotionState = EmotionState.POSITIVE,
+        preference: TonePreference = TonePreference.RELAXED,
     ) -> None:
         """
         Send task completion notification.
@@ -206,11 +245,19 @@ class JarvisInterface:
             task_title: Name of completed task
             result_summary: Brief result description
             task_id: For file storage
+            emotion: EmotionState for tone adjustment
+            preference: TonePreference for personality tuning
         """
         nl = f"✅ 任务完成: {task_title}\n\n{result_summary}"
 
+        formatted_nl = self._tuner.format_notification(
+            base_message=nl,
+            emotion=emotion,
+            preference=preference,
+        )
+
         try:
-            await self._feishu.send_message_to_user(user_id=user_id, message=nl)
+            await self._feishu.send_message_to_user(user_id=user_id, message=formatted_nl)
         except Exception as e:
             logger.warning("Feishu completion send failed for user %s: %s", user_id, e)
 
@@ -219,7 +266,7 @@ class JarvisInterface:
                 user_id=user_id,
                 task_id=task_id,
                 card_payload={"type": "completion", "result": result_summary},
-                nl_summary=nl,
+                nl_summary=formatted_nl,
             )
 
     async def send_failure_notification(
@@ -228,6 +275,8 @@ class JarvisInterface:
         task_title: str,
         error_summary: str,
         task_id: str | None = None,
+        emotion: EmotionState = EmotionState.FRUSTRATED,
+        preference: TonePreference = TonePreference.RELAXED,
     ) -> None:
         """
         Send task failure notification.
@@ -237,11 +286,19 @@ class JarvisInterface:
             task_title: Name of failed task
             error_summary: Error description
             task_id: For file storage
+            emotion: EmotionState for tone adjustment
+            preference: TonePreference for personality tuning
         """
         nl = f"❌ 任务失败: {task_title}\n\n错误: {error_summary}"
 
+        formatted_nl = self._tuner.format_notification(
+            base_message=nl,
+            emotion=emotion,
+            preference=preference,
+        )
+
         try:
-            await self._feishu.send_message_to_user(user_id=user_id, message=nl)
+            await self._feishu.send_message_to_user(user_id=user_id, message=formatted_nl)
         except Exception as e:
             logger.warning("Feishu failure send failed for user %s: %s", user_id, e)
 
@@ -250,7 +307,7 @@ class JarvisInterface:
                 user_id=user_id,
                 task_id=task_id,
                 card_payload={"type": "failure", "error": error_summary},
-                nl_summary=nl,
+                nl_summary=formatted_nl,
             )
 
     # -------------------------------------------------------------------------
