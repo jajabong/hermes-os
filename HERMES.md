@@ -197,8 +197,7 @@ hermes config set memory.provider holographic
 
 ## 暂不开发
 
-- openbee（异构并行）
-- oct-os（自主探索）
-- openmind（价值发现）
-- lark-gateway（飞书已内置）
-- 其他外部 Agent 调用（Phase 2+ 考虑）
+- 复杂多 Agent 异构并行与分布式调度
+- 跨模型自主探索与多维价值对齐
+- 自定义飞书网关（已使用内置支持）
+- 其他外部平台高级集成（Phase 2+ 考虑）

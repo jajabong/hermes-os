@@ -14,7 +14,11 @@ async def hook() -> HermesOSHook:
     ))
     await h._get_router()
     await h._get_cli()
-    return h
+    yield h
+    # Clean up: stop event loop and scheduler watcher so pytest can exit
+    if h._event_loop is not None:
+        await h._event_loop.stop()
+    h._scheduler = None
 
 
 class TestHookManifest:
@@ -126,7 +130,11 @@ class TestHandle:
     @pytest.mark.asyncio
     async def test_close_releases_resources(self) -> None:
         """close() releases router and cli resources without raising."""
-        hook = HermesOSHook()
+        hook = HermesOSHook(config=HookConfig(
+            db_path=":memory:",
+            knowledge_db_path=":memory:",
+            enable_event_loop=False,  # Disable background loops for unit test
+        ))
         await hook._get_router()
         await hook._get_cli()
         await hook.close()  # must not raise

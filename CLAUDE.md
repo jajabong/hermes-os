@@ -1,6 +1,37 @@
 # Hermes OS — OMC + ECC 全自动开发 Prompt
 
-> Hermes OS = hermes-agent。专注服务 100 用户。
+> Hermes OS = hermes-agent + 多用户路由层。专注服务 100 用户。
+
+## 当前目标：实现 Hermes OS 永不停机的虚拟团队架构
+
+### 核心目标
+
+**Hermes OS 是一个 AI 原生组织架构，不是一个工具，不是一个平台，是一支永不停机的虚拟团队。**
+
+- **言出法随**：用户说目标，Hermes OS 负责路径
+- **动态最优**：不预设固定架构，按任务需要组装 Agent + Skills + 工具
+- **7×24**：任务持久化，跨时间窗口执行，用户随时来问进度
+- **自驱动**：主动发现问题、主动学习、主动建议
+
+### 已实现
+
+- ✅ `task_scheduler.py` — 任务持久化 + DAG 依赖 + 7×24 唤醒机制
+- ✅ `skill_discovery.py` — GitHub 技能发现 + transient skills + 有效性追踪
+- ✅ `router.py` — 多用户路由层（SessionManager + MemoryRouter）
+
+### 实现中
+
+- ⏳ SkillDiscovery 有效性回路 → Solidify/Discard 决策
+- ⏳ TaskScheduler 与 hermes-agent 集成（执行层调用）
+- ⏳ Chief proactive 模式（主动建议）
+
+### 技术栈
+
+- Python >= 3.11（`.venv/bin/python`）
+- aiosqlite（SQLite 异步）
+- mem0ai（per-user 记忆）
+- hermes-agent（执行层）
+
 
 ## 核心定义
 
@@ -12,16 +43,30 @@
 
 **技术栈**：Python >= 3.11，pip
 
-**开发工具**：Claude Code + OMC + ECC
+**开发工具**：Claude Code（主力）+ hermes-agent（协调层）
 
-## 暂不考虑
+## Claude Code 调用策略
 
-以下全部暂不开发，等 MVP 跑通再加：
-- openbee（异构并行）
-- oct-os（自主探索）
-- openmind（价值发现）
-- lark-gateway（飞书集成，已是 hermes-agent 内置）
-- 其他 Agent 调用（Claude Code / Gemini CLI 等）
+**原则**：最大化每次调用的价值。22秒冷启动是固定成本。
+
+| 任务类型 | 执行者 | 原因 |
+|----------|--------|------|
+| 单文件分析/修改 | Hermes 原生 | 快速，零冷启动 |
+| 多文件代码生成 | Claude Code | 完整上下文一次给 |
+| 复杂重构/跨栈 | Claude Code | 规划+执行一体化 |
+| 陌生技术栈探索 | Claude Code | 边学习边编码 |
+| 简单命令/读取 | Hermes 原生 | 秒级响应 |
+
+**调用方式**：
+```bash
+# 非交互模式，Hermes 的主力调用
+claude -p "完整任务描述" --no-stream --max-turns N --allowed-tools "Read,Write,Bash,Glob,Grep"
+```
+
+**禁止**：
+- 用 Claude Code 查文件（用 Hermes 工具）
+- 用 Claude Code 执行单条命令（直接 bash）
+- 拆分任务多次调用（积累到一次）
 
 ## 工作流程（OMC + ECC 驱动）
 

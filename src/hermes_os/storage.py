@@ -62,6 +62,19 @@ class Storage:
             )
             """
         )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversation_states (
+                user_id TEXT PRIMARY KEY,
+                state TEXT NOT NULL DEFAULT 'IDLE',
+                current_task_id TEXT,
+                pending_decision TEXT,
+                multi_step_progress REAL DEFAULT 0.0,
+                last_updated TEXT,
+                metadata TEXT
+            )
+            """
+        )
         await db.commit()
 
     async def initialize(self) -> None:
@@ -155,5 +168,75 @@ class Storage:
         await db.execute(
             "INSERT OR REPLACE INTO sessions (user_id, session_id) VALUES (?, ?)",
             (user_id, session_id),
+        )
+        await db.commit()
+
+    async def delete_sessions_except(self, valid_user_ids: set[str]) -> None:
+        """Delete all session records except those for the given user IDs."""
+        await self._lazy_initialize()
+        db = await self._get_db()
+        if not valid_user_ids:
+            await db.execute("DELETE FROM sessions")
+        else:
+            placeholders = ",".join(["?"] * len(valid_user_ids))
+            await db.execute(
+                f"DELETE FROM sessions WHERE user_id NOT IN ({placeholders})",
+                list(valid_user_ids),
+            )
+        await db.commit()
+
+    # -------------------------------------------------------------------------
+    # Conversation State CRUD
+    # -------------------------------------------------------------------------
+
+    async def save_conversation_state(
+        self,
+        user_id: str,
+        state: str,
+        current_task_id: str | None = None,
+        pending_decision: str | None = None,
+        multi_step_progress: float = 0.0,
+        metadata: dict | None = None,
+    ) -> None:
+        """Save or update a user's conversation state."""
+        await self._lazy_initialize()
+        db = await self._get_db()
+        from datetime import UTC, datetime
+        await db.execute(
+            """
+            INSERT OR REPLACE INTO conversation_states
+            (user_id, state, current_task_id, pending_decision, multi_step_progress, last_updated, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                state,
+                current_task_id,
+                pending_decision,
+                multi_step_progress,
+                datetime.now(UTC).isoformat(),
+                __import__("json").dumps(metadata) if metadata else None,
+            ),
+        )
+        await db.commit()
+
+    async def get_conversation_state(self, user_id: str) -> dict | None:
+        """Load a user's conversation state, or None if not set."""
+        await self._lazy_initialize()
+        db = await self._get_db()
+        async with db.execute(
+            "SELECT * FROM conversation_states WHERE user_id = ?",
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+    async def clear_conversation_state(self, user_id: str) -> None:
+        """Reset a user's conversation state to IDLE."""
+        await self._lazy_initialize()
+        db = await self._get_db()
+        await db.execute(
+            "UPDATE conversation_states SET state = 'IDLE', current_task_id = NULL, pending_decision = NULL, multi_step_progress = 0.0 WHERE user_id = ?",
+            (user_id,),
         )
         await db.commit()

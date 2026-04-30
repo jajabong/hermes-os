@@ -333,7 +333,8 @@ class TestUserRouterRoute:
 
         result = await router.route(event)
 
-        assert result.enriched_message == "Fallback message"
+        assert result.enriched_message.startswith("<current_user>")
+        assert result.enriched_message.endswith("\n\nFallback message")
         assert result.session_id == "fresh_s1"
 
     @pytest.mark.asyncio

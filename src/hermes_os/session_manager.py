@@ -85,3 +85,14 @@ class SessionManager:
                 self._sessions[user_id].last_active = datetime.now(UTC)
 
             await self.storage.clear_messages(user_id)
+
+    async def cleanup_orphaned_sessions(self, valid_user_ids: set[str]) -> None:
+        """Remove session data for user_ids no longer present in UserRegistry."""
+        async with self._lock:
+            # Clear in memory
+            orphaned = [uid for uid in self._sessions if uid not in valid_user_ids]
+            for uid in orphaned:
+                del self._sessions[uid]
+
+            # Clear in DB
+            await self.storage.delete_sessions_except(valid_user_ids)

@@ -157,7 +157,7 @@ class TestMemoryRouterSearch:
         results = await router.search(alice, "dark mode", limit=5)
 
         _shared_mock_client.search.assert_awaited_once_with(
-            "dark mode", user_id=alice.user_id, limit=5
+            "dark mode", filters={"user_id": alice.user_id}, limit=5
         )
         assert results == [{"memory": "Likes dark mode"}]
 
@@ -171,12 +171,13 @@ class TestMemoryRouterSearch:
 
         assert _shared_mock_client.search.await_count == 2
         calls = _shared_mock_client.search.await_args_list
-        assert calls[0].kwargs["user_id"] == alice.user_id
-        assert calls[1].kwargs["user_id"] == bob.user_id
+        assert calls[0].kwargs["filters"]["user_id"] == alice.user_id
+        assert calls[1].kwargs["filters"]["user_id"] == bob.user_id
 
     @pytest.mark.asyncio
     async def test_search_default_limit(self, router: MemoryRouter, alice: User) -> None:
         """search() defaults to limit=5 when not specified."""
+        _shared_mock_client.search = AsyncMock(return_value={"results": []})
         await router.search(alice, "query")
         call_args = _shared_mock_client.search.call_args
         assert call_args.kwargs["limit"] == 5
@@ -214,7 +215,7 @@ class TestMemoryRouterGetAll:
 
         results = await router.get_all(alice)
 
-        _shared_mock_client.get_all.assert_awaited_once_with(user_id=alice.user_id)
+        _shared_mock_client.get_all.assert_awaited_once_with(filters={"user_id": alice.user_id})
         assert len(results) == 2
         assert results[0]["memory"] == "First fact"
 
@@ -229,8 +230,8 @@ class TestMemoryRouterGetAll:
         await router.get_all(bob)
 
         calls = _shared_mock_client.get_all.await_args_list
-        assert calls[0].kwargs["user_id"] == alice.user_id
-        assert calls[1].kwargs["user_id"] == bob.user_id
+        assert calls[0].kwargs["filters"]["user_id"] == alice.user_id
+        assert calls[1].kwargs["filters"]["user_id"] == bob.user_id
 
 
 # ---------------------------------------------------------------------------

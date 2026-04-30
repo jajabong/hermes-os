@@ -16,15 +16,21 @@ class User:
     platform_user_id: str = ""
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    def to_context_block(self) -> str:
+    def to_context_block(self, profile: dict | None = None) -> str:
         """Render as XML context block injected into hermes-agent prompt."""
+        extra = ""
+        if profile:
+            for key in ("title", "department", "email"):
+                if profile.get(key):
+                    label = "dept" if key == "department" else key
+                    extra += f"{label}: {profile[key]}\n"
         return (
             f"<current_user>\n"
             f"id: {self.user_id}\n"
             f"name: {self.name}\n"
             f"role: {self.role}\n"
             f"team: {self.team}\n"
-            f"</current_user>"
+            f"{extra}</current_user>"
         )
 
 

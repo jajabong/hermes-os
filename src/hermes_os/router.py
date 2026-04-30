@@ -21,6 +21,8 @@ class GatewayEvent:
     platform_user_id: str  # native user id on that platform
     message: str           # raw text from user
     user_name: str = "Unknown"
+    user_id_alt: str | None = None  # union_id for Feishu, stable across apps
+    profile: dict | None = None  # full user profile from hermes_state
 
 
 @dataclass
@@ -69,12 +71,14 @@ class UserRouter:
 
     async def route(self, event: GatewayEvent) -> RoutedRequest:
         """Process a gateway event and return an enriched request for hermes-agent."""
+        # 1. 确保用户在所有操作前已注册并持久化
         user = await self.registry.upsert_from_pairing(
             platform=event.platform,
             platform_user_id=event.platform_user_id,
             name=event.user_name,
         )
 
+        # 2. 现在可以安全地进行会话操作
         await self.sessions.add_message(user.user_id, "user", event.message)
 
         session = await self.sessions.get(user.user_id)
@@ -90,16 +94,16 @@ class UserRouter:
         knowledge_results = await self.knowledge.search(event.message, team=user.team)
         knowledge_context = self._format_knowledge_context(knowledge_results)
 
-        enriched_history = self.injector.inject_history(user, history)
-        enriched_message = (
-            enriched_history[-1]["content"]
-            if enriched_history
-            else event.message
-        )
+        # Build enriched message: user block + memory + original message + knowledge
+        enriched_message = self.injector.inject(user, event.message, event.profile)
         if memory_context:
             enriched_message = f"{memory_context}\n\n{enriched_message}"
         if knowledge_context:
             enriched_message = f"{enriched_message}\n\n{knowledge_context}"
+
+        # Also inject context into session history for continuity
+        if history:
+            self.injector.inject_history(user, history, event.profile)
 
         return RoutedRequest(
             user=user,

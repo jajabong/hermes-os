@@ -62,12 +62,12 @@ AI-Native OS：
 ┌─────────────────────────────────────────────────────────────┐
 │                    Agent 层                                  │
 │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐     │
-│  │ Claude  │  │ Gemini  │  │ OpenMind│  │ OpenBee │     │
-│  │ Code    │  │ CLI     │  │         │  │         │     │
-│  │ 代码专家 │  │ 大上下文 │  │ 价值发现 │  │ 并行执行 │     │
-│  │ REPL    │  │ 分析    │  │ 研究分析 │  │ DAG     │     │
+│  │ Claude  │  │ Search  │  │ Research│  │ Worker  │     │
+│  │ Code    │  │ Specialist│  │ Analyst │  │ Engine  │     │
+│  │ 代码专家 │  │ 搜索专家  │  │ 研究分析 │  │ 并行执行 │     │
+│  │ REPL    │  │           │  │         │  │         │     │
 │  └─────────┘  └─────────┘  └─────────┘  └─────────┘     │
-│         （按需扩展，暂不实现）                              │
+│         （通过 Skills 协议按需动态扩展）                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -105,14 +105,18 @@ Agent 启动时声明自己的 Skills：
 
 **Hermes OS 维护**：Agent 注册表 + Skills 索引
 
-### 3. Task Orchestration
+### 3. Task Orchestration (task_scheduler.py)
 
-**职责**：将任务路由到正确的 Agent，处理依赖关系
+**职责**：将任务路由到正确的 Agent，处理依赖关系，支持长时间窗口
 
 **关键概念**：
 - **Task Graph**：带依赖关系的任务 DAG
-- **Agent Pool**：可用 Agent 及其当前状态
-- **Routing**：将任务匹配到最合适的 Agent
+- **TaskScheduler**：持久化任务、7×24 唤醒机制、DAG 调度
+- **SQLite 持久化**：任务状态 survives 重启
+
+**Task 状态机**：`pending → running → completed/failed`
+- `blocked`：等待依赖项
+- 自动 unblock 依赖满足时
 
 ### 4. Cross-Agent Memory
 
@@ -123,11 +127,54 @@ Agent 启动时声明自己的 Skills：
 - Hermes OS 维护共享记忆空间
 - Agent 可以读写共享上下文
 
-### 5. Result Aggregation
+### 5. Skill Discovery (skill_discovery.py)
+
+**职责**：动态从 GitHub 获取缺失能力，主动学习
+
+**发现环路**：
+```
+检测能力缺口 → GitHub 搜索 → 评估质量 → 存储为 transient skill
+     ↓
+使用 → 追踪有效性 → 决定固化或丢弃
+```
+
+**Transient Skills**：存储在 `~/.hermes/skills/_transient/`
+**Solidified Skills**：移动到 `~/.hermes/skills/<name>/`
+
+### 6. Result Aggregation
 
 **职责**：合并多个 Agent 的结果
 
 **挑战**：不同输出格式、部分失败、冲突
+
+### 7. Claude Code Invoker (claude_code_invocator.py)
+
+**职责**：Hermes OS 调用 Claude Code 的标准化接口
+
+**设计决策**：
+- `--bare` 模式：跳过 CLAUDE.md 自动发现（避免递归超时）
+- `--add-dir` 显式添加目录：保留工具访问能力
+- `--no-session-persistence`：每次调用独立 session
+- SIGTERM 超时保护：避免永不终止的任务
+
+**关键发现（2026-04-28）**：
+- `--bare` + Read 工具组合读大文件会超时
+- 解决：用 Bash 命令（`head`, `wc`, `grep`）代替 Read 工具
+
+**API**：
+```python
+from hermes_os import invoke, invoke_stream, invoke_bash, health_check
+
+# 单次任务（分析/规划）
+result = await invoke(prompt="分析 PR 安全性", cwd=project_path, max_turns=20)
+
+# 流式任务（代码生成）
+async for line in invoke_stream(prompt="生成测试", cwd=project_path):
+    print(line)
+
+# 纯命令执行
+result = await invoke_bash("wc -l src/main.py")
+```
 
 ## 实现路线图
 

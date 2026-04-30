@@ -204,8 +204,8 @@ class TestMemoryIsolation:
         assert bob_results == [{"memory": "Bob data"}]
 
         calls = mock_mem0_client.search.await_args_list
-        assert calls[0].kwargs["user_id"] == "alice_uid"
-        assert calls[1].kwargs["user_id"] == "bob_uid"
+        assert calls[0].kwargs["filters"]["user_id"] == "alice_uid"
+        assert calls[1].kwargs["filters"]["user_id"] == "bob_uid"
 
 
 class TestFullPipelineIsolation:
