@@ -15,6 +15,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _cached_instance: "HermesSettings | None" = None
 
 
+def _get_cached_instance() -> "HermesSettings | None":
+    global _cached_instance
+    return _cached_instance
+
+
+def _clear_cached_instance() -> None:
+    """Clear the singleton cache — used by tests to force fresh settings."""
+    global _cached_instance
+    _cached_instance = None
+
+
 class HermesSettings(BaseSettings):
     """Hermes OS application settings loaded from HERMES_* environment variables.
 
@@ -48,7 +59,10 @@ class HermesSettings(BaseSettings):
     enable_proactive: bool = Field(default=True, validation_alias="HERMES_ENABLE_PROACTIVE")
     enable_health_endpoint: bool = Field(default=True, validation_alias="HERMES_ENABLE_HEALTH_ENDPOINT")
 
-    cors_origins: list[str] = Field(default_factory=list, validation_alias="HERMES_CORS_ORIGINS")
+    # cors_origins — reads HERMES_CORS_ORIGINS manually to avoid pydantic-settings
+    # JSON-list decoding issues with comma-separated values. The validator below
+    # handles the parsing from raw env string.
+    cors_origins: list[str] = Field(default_factory=list)
 
     def __new__(cls) -> "HermesSettings":
         global _cached_instance
@@ -56,15 +70,34 @@ class HermesSettings(BaseSettings):
             _cached_instance = super().__new__(cls)
         return _cached_instance
 
+    @staticmethod
+    def _clear_cache() -> None:
+        """Clear the singleton cache — used by tests."""
+        global _cached_instance
+        _cached_instance = None
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Any) -> list[str]:
-        """Parse CORS_ORIGINS as comma-separated string or list."""
-        if isinstance(v, str):
-            return [s.strip() for s in v.split(",") if s.strip()]
-        if isinstance(v, list):
-            return v
-        return []
+        """Parse HERMES_CORS_ORIGINS from raw env string or from model data."""
+        import os as _os
+        raw = _os.environ.get("HERMES_CORS_ORIGINS", "")
+        if not raw:
+            # Fall back to whatever was passed in (validator chaining)
+            if isinstance(v, str) and not v.startswith("[") and "," in v:
+                return [s.strip() for s in v.split(",") if s.strip()]
+            if isinstance(v, list):
+                return v
+            return []
+        # Try JSON first: ["https://a.com", "https://b.com"]
+        if raw.startswith("["):
+            import json
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
+        # Comma-separated: https://a.com,https://b.com
+        return [s.strip() for s in raw.split(",") if s.strip()]
 
     @field_validator("log_level", mode="before")
     @classmethod

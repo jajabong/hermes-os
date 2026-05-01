@@ -11,6 +11,7 @@ claude_code_invocator.py — Hermes OS 的 Claude Code 调用层
 4. --output-format json：机器可解析的输出
 5. --max-turns 控制：防止失控的长时间任务
 6. 超时保护：SIGTERM 强制终止，不等待自然退出
+7. alias 环境变量：自动解析 claude-mini alias 中的 API 配置
 
 调用模式：
     invoke(prompt, cwd=project_path)     → 单次任务（分析/规划）
@@ -22,6 +23,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import re
 import shutil
 import signal
 import subprocess
@@ -86,24 +89,92 @@ class InvocationError(Exception):
 # =============================================================================
 
 _claude_binary_cache: str | None = None
+_claude_env_cache: dict[str, str] | None = None
 
 
 def find_claude_binary() -> str:
-    """找到 claude 可执行文件路径"""
+    """
+    找到 claude 可执行文件路径。
+
+    优先使用 /opt/homebrew/bin/claude（Homebrew 安装的 Claude Code CLI），
+    而不是 shutil.which("claude") 返回的 cmux wrapper。
+    Homebrew 版本与 MiniMax API alias 环境变量配合工作。
+    """
     global _claude_binary_cache
     if _claude_binary_cache:
         return _claude_binary_cache
 
-    for path in [
-        "/opt/homebrew/bin/claude",
-        "/usr/local/bin/claude",
-        shutil.which("claude") or "claude",
-    ]:
+    # 优先用 Homebrew 安装的 Claude Code（与 MiniMax alias 配合）
+    for path in ["/opt/homebrew/bin/claude", "/usr/local/bin/claude"]:
         if Path(path).exists():
             _claude_binary_cache = path
-            return path
-    _claude_binary_cache = "claude"
-    return "claude"
+            return _claude_binary_cache
+
+    # 回退到 which
+    which_result = shutil.which("claude")
+    if which_result:
+        _claude_binary_cache = which_result
+    else:
+        _claude_binary_cache = "claude"
+    return _claude_binary_cache
+
+
+def get_claude_env() -> dict[str, str]:
+    """
+    从 claude-mini alias 提取环境变量（API URL、API Key、TLS 设置等）。
+
+    这是关键修复：直接调 /opt/homebrew/bin/claude 会因为缺少
+    ANTHROPIC_BASE_URL 和 NODE_TLS_REJECT_UNAUTHORIZED 而报 API Key 无效。
+    通过解析 alias 获取完整环境配置。
+    """
+    global _claude_env_cache
+    if _claude_env_cache is not None:
+        return _claude_env_cache
+
+    env_vars: dict[str, str] = {}
+
+    try:
+        # 尝试交互式 shell 获取完整 alias（包括 env 设置）
+        result = subprocess.run(
+            ["zsh", "-i", "-c", "alias claude-mini 2>/dev/null || alias claude 2>/dev/null || echo NOT_FOUND"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        alias_str = result.stdout.strip()
+
+        if alias_str and alias_str != "NOT_FOUND":
+            # 从 alias 中提取所有 KEY=VALUE 环境变量
+            # 格式: env KEY1="val1" KEY2="val2" ... /path/to/binary --flags
+            # 找到 'env' 后面的所有 KEY=VALUE 对
+            env_match = re.search(r'^[^=]+=\'env\s+(.+?)\s+/', alias_str, re.DOTALL)
+            if env_match:
+                env_part = env_match.group(1)
+                # 匹配 KEY="VALUE" 或 KEY='' 或 KEY=VALUE 格式
+                for match in re.finditer(r'(\w+)=["\']([^"\']*?)["\']|\.(\w+)=(["\']?)([^"\']*?)\3', env_part):
+                    if match.group(1):  # KEY="VALUE" 格式
+                        key, val = match.group(1), match.group(2)
+                        if key.isupper():
+                            env_vars[key] = val
+            # 回退：直接搜索所有 KEY="value" 模式
+            if not env_vars:
+                for match in re.finditer(r'(\w+)=["\']([^"\']*?)["\']', alias_str):
+                    key, val = match.group(1), match.group(2)
+                    if key.isupper() and val:
+                        env_vars[key] = val
+
+    except Exception:
+        pass
+
+    # 如果 alias 解析失败，从当前进程环境继承
+    if not env_vars:
+        for key in ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "NODE_TLS_REJECT_UNAUTHORIZED", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"]:
+            val = os.environ.get(key)
+            if val:
+                env_vars[key] = val
+
+    _claude_env_cache = env_vars
+    return env_vars
 
 
 def build_args(
@@ -129,6 +200,10 @@ def build_args(
 
     # 不持久化 session，每次独立
     args.append("--no-session-persistence")
+
+    # MiniMax 等第三方 API 需要 bypassPermissions
+    args.append("--permission-mode")
+    args.append("bypassPermissions")
 
     # 模型
     if model:
@@ -210,9 +285,11 @@ async def invoke(
         extra_flags=extra_flags,
     )
 
-    env = {**subprocess.os.environ.copy()}
-    # 确保 ANTHROPIC_API_KEY 传入
-    # （通常已在环境变量中，这里做防御性检查）
+    env = {**os.environ.copy()}
+    # 合并 claude-mini alias 中的环境变量（API URL、API Key、TLS 设置等）
+    # 这是关键修复：直接调 /opt/homebrew/bin/claude 需要这些变量才能正确路由到 MiniMax API
+    claude_env = get_claude_env()
+    env.update(claude_env)
 
     proc = await asyncio.create_subprocess_exec(
         *args,
@@ -298,7 +375,8 @@ async def invoke_stream(
         system_prompt=system_prompt,
     )
 
-    env = {**subprocess.os.environ.copy()}
+    env = {**os.environ.copy()}
+    env.update(get_claude_env())
 
     proc = await asyncio.create_subprocess_exec(
         *args,
