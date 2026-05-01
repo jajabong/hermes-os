@@ -11,6 +11,16 @@ import pytest
 class TestHermesSettings:
     """Tests for HermesSettings loaded from environment variables."""
 
+    def setup_method(self) -> None:
+        """Clear the singleton cache before each test."""
+        from hermes_os.production.settings import HermesSettings
+        HermesSettings._clear_cache()
+
+    def teardown_method(self) -> None:
+        """Clear the singleton cache after each test."""
+        from hermes_os.production.settings import HermesSettings
+        HermesSettings._clear_cache()
+
     def test_settings_loads_hermes_db_path_from_env(self) -> None:
         """HERMES_DB_PATH env var sets database path."""
         with patch.dict(os.environ, {"HERMES_DB_PATH": "/custom/path/hermes.db"}):

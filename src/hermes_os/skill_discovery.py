@@ -78,7 +78,13 @@ class SkillDiscovery:
         if self._db is None:
             self._db = await aiosqlite.connect(self.db_path)
             self._db.row_factory = aiosqlite.Row
+            await self._apply_pragmas(self._db)
         return self._db
+
+    async def _apply_pragmas(self, db: aiosqlite.Connection) -> None:
+        """Enforce WAL mode and normal synchronous for better concurrency."""
+        await db.execute("PRAGMA journal_mode=WAL")
+        await db.execute("PRAGMA synchronous=NORMAL")
 
     async def _lazy_init(self) -> None:
         db = await self._get_db()

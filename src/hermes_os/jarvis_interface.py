@@ -310,6 +310,56 @@ class JarvisInterface:
                 nl_summary=formatted_nl,
             )
 
+    async def send_portfolio_dashboard(
+        self,
+        user_id: str,
+        stats: dict[str, Any],
+        emotion: EmotionState = EmotionState.POSITIVE,
+        preference: TonePreference = TonePreference.RELAXED,
+    ) -> None:
+        """
+        Send a commercial dashboard card with ROI and asset health.
+
+        Args:
+            user_id: Feishu open_id
+            stats: Dict from ArtifactManager.get_portfolio_stats()
+            emotion: EmotionState for tone adjustment
+            preference: TonePreference for personality tuning
+        """
+        title = "📊 自治帝国：资产负债大盘"
+        
+        roi = stats.get("portfolio_roi", 0.0)
+        roi_color = "green" if roi >= 0 else "red"
+        roi_text = f"<font color='{roi_color}'>**{roi:.2f}%**</font>"
+        
+        content = (
+            f"**资产概览**\n"
+            f"- 总资产数: {stats.get('artifact_count', 0)}\n"
+            f"- 累计成本: ${stats.get('total_cost_usd', 0.0):.2f}\n"
+            f"- 累计收益: ${stats.get('total_revenue_usd', 0.0):.2f}\n\n"
+            f"**投资回报率 (ROI)**\n"
+            f"当前帝国 ROI: {roi_text}\n\n"
+            f"*注：数据基于所有 Artifacts 自动汇总。*"
+        )
+        
+        actions = [
+            {"text": "查看详情", "value": "view_portfolio_details", "type": "primary"},
+            {"text": "刷新大盘", "value": "refresh_dashboard", "type": "default"},
+        ]
+
+        nl_summary = f"资产大盘更新：当前 ROI 为 {roi:.2f}%"
+
+        await self.send_card_with_nl(
+            user_id=user_id,
+            title=title,
+            content=content,
+            actions=actions,
+            nl_summary=nl_summary,
+            task_id="portfolio_dashboard",
+            emotion=emotion,
+            preference=preference,
+        )
+
     # -------------------------------------------------------------------------
     # Card builder
     # -------------------------------------------------------------------------

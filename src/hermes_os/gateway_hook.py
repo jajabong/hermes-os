@@ -25,6 +25,8 @@ from hermes_os.router import GatewayEvent
 from hermes_os.skill_loader import SkillLoader
 from hermes_os.task_scheduler import TaskScheduler, TaskStatus
 from hermes_os.conversation_state import ConversationStateManager
+from hermes_os.approval_tracker import ApprovalTracker
+from hermes_os.goal_tracker import GoalTracker
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,8 @@ class HermesOSHook:
         self._scheduler: TaskScheduler | None = None
         self._proactive_engine: ProactiveEngine = ProactiveEngine()
         self._org_memory: OrgMemory = OrgMemory()
+        self._approval_tracker: ApprovalTracker | None = None
+        self._goal_tracker: GoalTracker | None = None
         self._conv_state: ConversationStateManager | None = None
 
         if self._config.enable_event_loop:
@@ -117,7 +121,7 @@ class HermesOSHook:
         if self._conv_state is None:
             self._conv_state = ConversationStateManager()
         self._scheduler = TaskScheduler(
-            db_path=self._config.db_path,
+            base_dir=None,  # uses default ~/.hermes/users/
             org_memory=self._org_memory,
             conversation_state_manager=self._conv_state,
         )
@@ -125,6 +129,21 @@ class HermesOSHook:
         self._proactive_engine.set_scheduler(self._scheduler)
         # Also wire org_memory into proactive engine
         self._proactive_engine.set_org_memory(self._org_memory)
+        # Wire user_registry for daily briefing opt-in
+        router = await self._get_router()
+        self._proactive_engine.set_user_registry(router._user_router.registry)
+        # Wire approval tracker for 时效追踪
+        self._approval_tracker = ApprovalTracker(db_path=self._config.db_path)
+        await self._approval_tracker.initialize()
+        self._proactive_engine.set_approval_tracker(self._approval_tracker)
+        # Wire goal tracker for 深层目标理解 into ChiefAgent
+        self._goal_tracker = GoalTracker(db_path=self._config.db_path)
+        await self._goal_tracker.initialize()
+        self._chief.set_goal_tracker(self._goal_tracker)
+        # Wire governance manager for dual-repo memory + donation patrol
+        from hermes_os.governance_layer import GovernanceManager
+        self._governance_manager = GovernanceManager(db_path=self._config.db_path)
+        self._proactive_engine.set_governance_manager(self._governance_manager)
         # Fire the watcher in the background (it runs forever)
         asyncio.create_task(
             self._scheduler.start_watcher(interval_seconds=self._config.scheduler_poll_interval)
@@ -416,6 +435,33 @@ class HermesOSHook:
                         payload={"user_id": user_id, "task_id": task_id},
                     )
                     asyncio.create_task(self._event_bus.publish(event))
+            elif action == "donate_to_global":
+                # User clicked "✅ 贡献" on governance donation card
+                content_path = data.get("content_path")
+                category = data.get("category", "概念")
+                if content_path and self._governance_manager:
+                    from hermes_os.router import GatewayEvent
+                    router = await self._get_router()
+                    # Get user from router or use user_id from task
+                    user = None
+                    if hasattr(self, "_governance_manager"):
+                        result = await self._governance_manager.promote_to_global(
+                            user_id=user_id or "unknown",
+                            path_to_md=content_path,
+                            rules={"category": category},
+                        )
+                        if result.success:
+                            logger.info(
+                                "Governance: user %s donated %s to global wiki",
+                                user_id,
+                                content_path,
+                            )
+                        else:
+                            logger.warning(
+                                "Governance donation failed: %s",
+                                result.error,
+                            )
+                logger.info("Jarvis: User triggered [Donate to Global] for path %s", content_path)
 
             # 清空消息，防止 agent 继续处理该指令
             event_obj.text = ""
@@ -432,3 +478,9 @@ class HermesOSHook:
         if self._cli:
             await self._cli.close()
             self._cli = None
+        if self._approval_tracker:
+            await self._approval_tracker.close()
+            self._approval_tracker = None
+        if self._goal_tracker:
+            await self._goal_tracker.close()
+            self._goal_tracker = None
