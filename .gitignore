@@ -57,3 +57,25 @@ data/
 # Session files
 sessions/
 *.session
+
+# Hermes OS
+hermes_os.db-shm
+hermes_os.db-wal
+.coverage
+*.tmp
+*.temp
+
+# Generated research documents
+docs/AI_*.md
+docs/ai-history*.md
+docs/人工智能发展史.md
+fourth_industrial_revolution_paper.md
+AI_BOOK_OUTLINE.md
+TEST_STAGE.md
+
+# Debug and personal scripts
+debug_feishu_import.py
+monitor_jarvis.py
+test_jarvis_paper.py
+ignition_test.py
+test_research.md
