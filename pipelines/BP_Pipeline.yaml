@@ -1,0 +1,67 @@
+# Business Plan Pipeline — Hermes OS
+# 商业计划书全自动生产流水线
+#
+# Usage:
+#   definition = PipelineDefinition.from_yaml(Path("pipelines/BP_Pipeline.yaml"))
+#   engine.execute_pipeline("bp-001", definition, context)
+
+name: "Business Plan Pipeline"
+description: "全自动商业计划书生产 — 从需求到可上路BP"
+version: "1.0"
+
+metadata:
+  author: "Hermes OS"
+  created: "2026-05-01"
+  target: "投资人/FA/内部战略"
+  labor_types:
+    - content   # 市场分析、战略规划
+    - format    # 格式转换 (Markdown → PDF/PPT)
+
+stages:
+  - name: market_research
+    labor_type: content
+    description: "市场规模、竞争格局、用户画像研究"
+    input_artifact: null
+    output_artifact: "01_market_research.md"
+    estimated_minutes: 45
+    verification_gate: "has_data"
+
+  - name: swot_analysis
+    labor_type: content
+    description: "SWOT分析 — 优势/劣势/机会/威胁"
+    input_artifact: "01_market_research.md"
+    output_artifact: "02_swot.md"
+    estimated_minutes: 30
+    verification_gate: "has_matrix"
+
+  - name: business_model
+    labor_type: content
+    description: "商业模式画布 — 价值主张/渠道/客户关系"
+    input_artifact: "02_swot.md"
+    output_artifact: "03_business_model.md"
+    estimated_minutes: 30
+    verification_gate: "has_canvas"
+
+  - name: financial_plan
+    labor_type: content
+    description: "财务预测 — 收入模型/成本结构/融资计划"
+    input_artifact: "03_business_model.md"
+    output_artifact: "04_financial_plan.md"
+    estimated_minutes: 45
+    verification_gate: "has_numbers"
+
+  - name: executive_summary
+    labor_type: content
+    description: "Executive Summary — 一页纸BP"
+    input_artifact: "04_financial_plan.md"
+    output_artifact: "05_executive_summary.md"
+    estimated_minutes: 20
+    verification_gate: "one_pager"
+
+  - name: pitch_deck
+    labor_type: format
+    description: "生成PPT版Pitch Deck"
+    input_artifact: "05_executive_summary.md"
+    output_artifact: "bp_presentation.pdf"
+    estimated_minutes: 15
+    verification_gate: "file_exists"

@@ -1,0 +1,78 @@
+# Book Authoring Pipeline — Hermes OS
+# 意图 → 大纲 → 章节生产 → 格式化输出 (PDF/EPUB)
+#
+# Usage:
+#   definition = PipelineDefinition.from_yaml(Path("pipelines/Book_Pipeline.yaml"))
+#   engine.execute_pipeline("book-001", definition, context)
+
+name: "Book Authoring Pipeline"
+description: "From intent to published book — full book authoring pipeline"
+version: "1.0"
+
+metadata:
+  author: "Hermes OS"
+  created: "2026-05-01"
+  labor_types:
+    - content   # Text generation (Research, Outline, Write)
+    - format    # Format conversion (Markdown → EPUB/PDF)
+    - browser   # Future: upload to platforms
+
+stages:
+  - name: research
+    labor_type: content
+    description: "Gather source materials and research topic"
+    input_artifact: null
+    output_artifact: "00_research.md"
+    estimated_minutes: 45
+    verification_gate: "has_content"
+
+  - name: outline
+    labor_type: content
+    description: "Create book outline structure with chapters"
+    input_artifact: "00_research.md"
+    output_artifact: "01_outline.md"
+    estimated_minutes: 30
+    verification_gate: "has_structure"
+
+  - name: write_chapters
+    labor_type: content
+    description: "Write book chapters based on outline"
+    input_artifact: "01_outline.md"
+    output_artifact: "ch*.md"
+    estimated_minutes: 120
+    parallel: true
+    parallel_max_concurrent: 5
+    parallel_failure_threshold: 0.5
+    verification_gate: "word_count"
+
+  - name: merge_chapters
+    labor_type: merge
+    description: "Merge chapter files into manuscript"
+    input_artifact: null
+    output_artifact: "02_manuscript.md"
+    estimated_minutes: 5
+    verification_gate: null
+
+  - name: review_manuscript
+    labor_type: review
+    description: "Review and revise manuscript"
+    input_artifact: "02_manuscript.md"
+    output_artifact: "03_review.md"
+    estimated_minutes: 15
+    verification_gate: null
+
+  - name: render_epub
+    labor_type: epub
+    description: "Format manuscript as EPUB"
+    input_artifact: "02_manuscript.md"
+    output_artifact: "book.epub"
+    estimated_minutes: 5
+    verification_gate: "file_exists"
+
+  - name: render_pdf
+    labor_type: pdf
+    description: "Format manuscript as PDF"
+    input_artifact: "02_manuscript.md"
+    output_artifact: "book.pdf"
+    estimated_minutes: 15
+    verification_gate: "file_exists"

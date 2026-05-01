@@ -1,0 +1,11 @@
+name: "Hermes-Intro-BP"
+description: "生产 Hermes OS 第一性原理 BP"
+steps:
+  - stage: "M1_OUTLINE"
+    labor: "ContentLabor"
+    task: "Generate structured outline for Hermes OS BP"
+    verify: "verify_outline_completeness"
+  - stage: "M2_RESEARCH"
+    labor: "ResearchLabor"
+    task: "Inject GlobalWiki context"
+    verify: "verify_evidence_density"

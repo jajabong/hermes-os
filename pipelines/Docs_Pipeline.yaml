@@ -1,0 +1,59 @@
+# Docs Pipeline — Hermes OS
+# 项目文档全自动生成
+#
+# Usage:
+#   definition = PipelineDefinition.from_yaml(Path("pipelines/Docs_Pipeline.yaml"))
+#   engine.execute_pipeline("docs-001", definition, context)
+
+name: "Docs Pipeline"
+description: "全自动技术文档生产 — 从代码到可发布文档"
+version: "1.0"
+
+metadata:
+  author: "Hermes OS"
+  created: "2026-05-01"
+  target: "README/API文档/架构文档"
+  labor_types:
+    - content   # 文档内容生成
+    - format    # 格式化输出
+
+stages:
+  - name: analyze_codebase
+    labor_type: content
+    description: "分析代码库结构和关键组件"
+    input_artifact: null
+    output_artifact: "00_code_analysis.md"
+    estimated_minutes: 30
+    verification_gate: "has_analysis"
+
+  - name: generate_readme
+    labor_type: content
+    description: "生成 README.md"
+    input_artifact: "00_code_analysis.md"
+    output_artifact: "01_readme.md"
+    estimated_minutes: 20
+    verification_gate: "has_structure"
+
+  - name: generate_api_docs
+    labor_type: content
+    description: "生成 API 文档"
+    input_artifact: "00_code_analysis.md"
+    output_artifact: "02_api_docs.md"
+    estimated_minutes: 30
+    verification_gate: "has_api_ref"
+
+  - name: generate_architecture
+    labor_type: content
+    description: "生成架构文档"
+    input_artifact: "00_code_analysis.md"
+    output_artifact: "03_architecture.md"
+    estimated_minutes: 25
+    verification_gate: "has_diagrams"
+
+  - name: format_html
+    labor_type: format
+    description: "转换为 HTML"
+    input_artifact: "01_readme.md"
+    output_artifact: "readme.html"
+    estimated_minutes: 5
+    verification_gate: "file_exists"

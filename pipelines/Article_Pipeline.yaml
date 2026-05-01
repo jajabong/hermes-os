@@ -1,0 +1,59 @@
+# Article Pipeline — Hermes OS
+# 主题研究 → 大纲 → 内容创作 → 格式化输出
+#
+# Usage:
+#   definition = PipelineDefinition.from_yaml(Path("pipelines/Article_Pipeline.yaml"))
+#   engine.execute_pipeline("article-001", definition, context)
+
+name: "Article Pipeline"
+description: "全自动文章/报告生产 — 从主题到发布就绪内容"
+version: "1.0"
+
+metadata:
+  author: "Hermes OS"
+  created: "2026-05-01"
+  target: "公众号/知乎/内部分享"
+  labor_types:
+    - content   # 研究、大纲、内容
+    - format    # 格式转换
+
+stages:
+  - name: topic_research
+    labor_type: content
+    description: "深度研究主题，收集关键数据和引用"
+    input_artifact: null
+    output_artifact: "00_topic_research.md"
+    estimated_minutes: 30
+    verification_gate: "has_data"
+
+  - name: create_outline
+    labor_type: content
+    description: "创建文章大纲结构"
+    input_artifact: "00_topic_research.md"
+    output_artifact: "01_outline.md"
+    estimated_minutes: 15
+    verification_gate: "has_structure"
+
+  - name: write_draft
+    labor_type: content
+    description: "基于大纲撰写完整文章"
+    input_artifact: "01_outline.md"
+    output_artifact: "02_draft.md"
+    estimated_minutes: 45
+    verification_gate: "word_count"
+
+  - name: add_citations
+    labor_type: content
+    description: "补充引用和数据来源"
+    input_artifact: "02_draft.md"
+    output_artifact: "03_citations.md"
+    estimated_minutes: 15
+    verification_gate: "has_citations"
+
+  - name: format_final
+    labor_type: format
+    description: "格式化最终输出"
+    input_artifact: "03_citations.md"
+    output_artifact: "article_final.md"
+    estimated_minutes: 5
+    verification_gate: "file_exists"
