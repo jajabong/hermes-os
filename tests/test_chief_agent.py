@@ -223,7 +223,7 @@ class TestIntentEnum:
 
     def test_intent_values_complete(self) -> None:
         """All expected intent values exist in the enum."""
-        expected = {"fix_bug", "deploy", "research", "code", "review", "test", "build", "query", "unknown"}
+        expected = {"fix_bug", "deploy", "research", "code", "review", "test", "build", "query", "unknown", "write_book"}
         actual = {a.value for a in Intent}
         assert expected == actual
 

@@ -826,6 +826,73 @@ class TaskScheduler:
 
         return created
 
+    async def create_pipeline_tasks(
+        self,
+        user_id: str,
+        topic: str,
+        pipeline_name: str = "Book Authoring Pipeline",
+        metadata: dict[str, Any] | None = None,
+    ) -> list[Task]:
+        """Create pipeline stage tasks for a given pipeline.
+
+        Discovers the pipeline YAML, creates one Task per stage with
+        pipeline_name/stage_name/pipeline_task_id metadata so that
+        PipelineTaskRunner.is_pipeline_task() detects them.
+
+        Args:
+            user_id: Owner of the tasks
+            topic: Book/script topic (used for context)
+            pipeline_name: Pipeline name to discover
+            metadata: Additional metadata to attach
+
+        Returns:
+            List of created Task objects (one per stage)
+        """
+        from hermes_os.pipeline_task_runner import PipelineTaskRunner
+
+        pipeline_task_id = f"pipeline-{uuid.uuid4().hex[:8]}"
+        meta = metadata or {}
+        meta.setdefault("intent_action", "write_book")
+        meta.setdefault("topic", topic)
+
+        # Discover pipeline YAML
+        runner = PipelineTaskRunner(
+            artifact_base=str(Path.home() / ".hermes" / "artifacts"),
+        )
+        pipeline_path = runner._discover_pipeline_path(pipeline_name)
+        if not pipeline_path:
+            logger.warning("TaskScheduler: pipeline not found: %s", pipeline_name)
+            return []
+
+        try:
+            from hermes_os.pipeline_engine import PipelineDefinition
+            definition = PipelineDefinition.from_yaml(pipeline_path)
+        except Exception as e:
+            logger.error("TaskScheduler: failed to load pipeline %s: %s", pipeline_name, e)
+            return []
+
+        # Create one task per stage with pipeline metadata
+        created: list[Task] = []
+        for stage in definition.stages:
+            task = await self.create_task(
+                user_id=user_id,
+                title=f"{stage.name}: {topic}",
+                description=f"{stage.description}\n\nTopic: {topic}",
+                priority=TaskPriority.HIGH,
+                depends_on=[],
+                metadata={
+                    **meta,
+                    "pipeline_name": pipeline_name,
+                    "pipeline_path": str(pipeline_path),
+                    "stage_name": stage.name,
+                    "pipeline_task_id": pipeline_task_id,
+                    "topic": topic,
+                },
+            )
+            created.append(task)
+
+        return created
+
     async def get_macro_progress(
         self, user_id: str, macro_title: str
     ) -> dict[str, Any]:
