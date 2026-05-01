@@ -39,6 +39,52 @@ from hermes_os.research_workflow import (
     IntelligenceResult,
     RiskFlag,
 )
+from hermes_os.gemini_cli import (
+    GeminiResult,
+    invoke as gemini_invoke,
+    invoke_stream as gemini_invoke_stream,
+    health_check as gemini_health_check,
+)
+from hermes_os.goal_tracker import (
+    GoalTracker,
+    GoalPhase,
+    GoalPattern,
+    GoalState,
+    EvolutionEntry,
+)
+from hermes_os.guardian_controller import (
+    GuardianController,
+    GuardianConfig,
+    CheckpointData,
+    HandleResult,
+    ErrorAttribution,
+    ErrorType,
+    EscalationDecision,
+)
+from hermes_os.approval_tracker import (
+    ApprovalTracker,
+    ApprovalStatus,
+    ApprovalRecord,
+)
+from hermes_os.notification_manager import (
+    NotificationManager,
+    NotificationEvent,
+    SendThresholds,
+)
+from hermes_os.labor_registry import (
+    LaborRegistry,
+    LaborResult,
+    LaborInterface,
+    get_labor_registry,
+    initialize_default_labors,
+)
+from hermes_os.artifact_manager import (
+    ArtifactManager,
+    ArtifactMeta,
+    ArtifactWorkspace,
+    ArtifactStage,
+    ArtifactStatus,
+)
 
 __version__ = "0.3.0"
 
@@ -97,4 +143,43 @@ __all__ = [
     "IntelligenceSource",
     "IntelligenceResult",
     "RiskFlag",
+    # Gemini CLI
+    "GeminiResult",
+    "gemini_invoke",
+    "gemini_invoke_stream",
+    "gemini_health_check",
+    # Goal Tracker
+    "GoalTracker",
+    "GoalPhase",
+    "GoalPattern",
+    "GoalState",
+    "EvolutionEntry",
+    # Guardian Controller
+    "GuardianController",
+    "GuardianConfig",
+    "CheckpointData",
+    "HandleResult",
+    "ErrorAttribution",
+    "ErrorType",
+    "EscalationDecision",
+    # Approval Tracker
+    "ApprovalTracker",
+    "ApprovalStatus",
+    "ApprovalRecord",
+    # Notification Manager
+    "NotificationManager",
+    "NotificationEvent",
+    "SendThresholds",
+    # Labor Registry
+    "LaborRegistry",
+    "LaborResult",
+    "LaborInterface",
+    "get_labor_registry",
+    "initialize_default_labors",
+    # Artifact Manager
+    "ArtifactManager",
+    "ArtifactMeta",
+    "ArtifactWorkspace",
+    "ArtifactStage",
+    "ArtifactStatus",
 ]
