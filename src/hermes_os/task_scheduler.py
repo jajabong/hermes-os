@@ -9,6 +9,7 @@ Enables Hermes OS to:
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import logging
 import re
@@ -114,8 +115,8 @@ class Task:
 
         metadata_str = row.get("metadata", "")
         try:
-            metadata = eval(metadata_str) if metadata_str else {}
-        except Exception:
+            metadata = ast.literal_eval(metadata_str) if metadata_str else {}
+        except (ValueError, SyntaxError, TypeError):
             metadata = {}
 
         return cls(
@@ -450,8 +451,8 @@ class TaskScheduler:
         while not self._stop_event.is_set():
             try:
                 await self._process_pending_tasks()
-            except Exception:
-                pass  # Don't let the watcher die
+            except Exception as e:
+                logger.error("Watcher: _process_pending_tasks failed: %s", str(e)[:200])
 
             # Periodic skill solidify review (~every 1 hour at 30s intervals)
             solidify_tick += 1
@@ -459,8 +460,8 @@ class TaskScheduler:
                 solidify_tick = 0
                 try:
                     await self._skill_discovery.run_solidify_cycle()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("Watcher: run_solidify_cycle failed: %s", str(e)[:200])
 
             await asyncio.sleep(interval_seconds)
 
@@ -479,15 +480,15 @@ class TaskScheduler:
             await self._send_intent_card(task)
 
             # Event-driven wait: set AWAITING_CONFIRMATION and listen for user response
-            user_id = task.metadata.get().replace(", notify_target", {}).get().replace(", open_id") or task.user_id
+            user_id = task.metadata.get("notify_target", {}).get("open_id") or task.user_id
             confirmed = await self._await_confirmation(user_id, task.task_id)
 
             if not confirmed:
                 # User intercepted or timed out
-                logger.info().replace(", Jarvis: Task %s intercepted or timed out", task.task_id)
+                logger.info("Jarvis: Task %s intercepted or timed out", task.task_id)
                 continue
 
-            logger.info().replace(", Jarvis: Task %s confirmed by user, executing", task.task_id)
+            logger.info("Jarvis: Task %s confirmed by user, executing", task.task_id)
 
             try:
                 # Extract execution parameters from metadata

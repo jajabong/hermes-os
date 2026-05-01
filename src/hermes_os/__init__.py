@@ -52,6 +52,7 @@ from hermes_os.goal_tracker import (
     GoalState,
     EvolutionEntry,
 )
+from hermes_os.proactive_engine import ProactiveEngine
 from hermes_os.guardian_controller import (
     GuardianController,
     GuardianConfig,
@@ -154,6 +155,8 @@ __all__ = [
     "GoalPattern",
     "GoalState",
     "EvolutionEntry",
+    # Proactive Engine
+    "ProactiveEngine",
     # Guardian Controller
     "GuardianController",
     "GuardianConfig",
