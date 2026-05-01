@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from hermes_os.pipeline_engine_v2 import PipelineEngine, PipelineConfig, ArtifactMeta, StageStatus
+from hermes_os.pipeline_engine_v2 import PipelineEngine, PipelineConfig, BatchArtifactMeta, StageStatus
 
 
 class TestBatchRunnerInterface:

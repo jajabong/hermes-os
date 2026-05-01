@@ -88,7 +88,7 @@ class BatchRunner:
         """
         try:
             # Import here to avoid circular imports
-            from hermes_os.pipeline_engine_v2 import PipelineEngine, ArtifactMeta
+            from hermes_os.pipeline_engine_v2 import PipelineEngine, BatchArtifactMeta
             from hermes_os.universal_pipeline import PipelineConfig
 
             # Create artifact workspace
@@ -96,7 +96,7 @@ class BatchRunner:
             artifact_dir.mkdir(parents=True, exist_ok=True)
 
             # Create initial meta
-            meta = ArtifactMeta(
+            meta = BatchArtifactMeta(
                 artifact_id=task_id,
                 title=config.name,
                 target_audience="",

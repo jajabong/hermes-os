@@ -20,19 +20,19 @@ from hermes_os.pipeline_engine_v2 import (
     PipelineStage,
     PipelineEngine,
     StageStatus,
-    ArtifactMeta,
+    BatchBatchArtifactMeta,
     verify_outline_completeness,
     verify_evidence_density,
     verify_audit_score,
 )
 
 
-class TestArtifactMeta:
-    """Test ArtifactMeta is the universal contract for all pipeline artifacts."""
+class TestBatchArtifactMeta:
+    """Test BatchArtifactMeta is the universal contract for all pipeline artifacts."""
 
     def test_meta_has_required_fields(self) -> None:
         """Meta.json must have: artifact_id, title, audience, style, status, current_stage."""
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="bp_001",
             title="商业计划书",
             target_audience="投资人",
@@ -49,7 +49,7 @@ class TestArtifactMeta:
 
     def test_meta_stores_key_thesis(self) -> None:
         """key_thesis must be stored in meta for all artifact types."""
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="bp_001",
             title="商业计划书",
             target_audience="投资人",
@@ -62,7 +62,7 @@ class TestArtifactMeta:
 
     def test_meta_persists_to_json(self) -> None:
         """Meta.json must be parseable JSON for inter-op."""
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="bp_001",
             title="商业计划书",
             target_audience="投资人",
@@ -185,7 +185,7 @@ steps:
     async def test_engine_starts_at_m1_outline(self, temp_dir: str, pipeline_yaml: str) -> None:
         """Engine should initialize at M1_OUTLINE."""
         config = PipelineConfig.from_yaml(pipeline_yaml)
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="doc_001",
             title="测试文档",
             target_audience="领导层",
@@ -201,7 +201,7 @@ steps:
     async def test_engine_advances_to_next_stage(self, temp_dir: str, pipeline_yaml: str) -> None:
         """After successful stage completion, engine advances to next stage."""
         config = PipelineConfig.from_yaml(pipeline_yaml)
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="doc_001",
             title="测试文档",
             target_audience="领导层",
@@ -217,7 +217,7 @@ steps:
     async def test_engine_blocks_on_audit_failure(self, temp_dir: str, pipeline_yaml: str) -> None:
         """Engine should not advance past M5_AUDIT if audit score < 0.8."""
         config = PipelineConfig.from_yaml(pipeline_yaml)
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="doc_001",
             title="测试文档",
             target_audience="领导层",
@@ -234,7 +234,7 @@ steps:
     async def test_engine_advances_on_audit_pass(self, temp_dir: str, pipeline_yaml: str) -> None:
         """Engine should advance from M5_AUDIT when audit score >= 0.8."""
         config = PipelineConfig.from_yaml(pipeline_yaml)
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="doc_001",
             title="测试文档",
             target_audience="领导层",
@@ -251,7 +251,7 @@ steps:
     async def test_engine_completes_at_final_stage(self, temp_dir: str, pipeline_yaml: str) -> None:
         """Engine should mark as completed after M6_DELIVERY."""
         config = PipelineConfig.from_yaml(pipeline_yaml)
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="doc_001",
             title="测试文档",
             target_audience="领导层",
@@ -268,7 +268,7 @@ steps:
     async def test_meta_json_persists_after_advance(self, temp_dir: str, pipeline_yaml: str) -> None:
         """meta.json should be updated after each stage advance."""
         config = PipelineConfig.from_yaml(pipeline_yaml)
-        meta = ArtifactMeta(
+        meta = BatchArtifactMeta(
             artifact_id="doc_001",
             title="测试文档",
             target_audience="领导层",
