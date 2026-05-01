@@ -83,6 +83,8 @@ class SkillLoader:
 
         return data
 
+    MAX_CONTENT_CHARS = 800  # Hard cap to prevent prompt bloat
+
     def get_skill_prompt_fragment(self, skill: dict[str, Any]) -> str:
         """Format a single skill as an injectable prompt fragment.
 
@@ -91,13 +93,17 @@ class SkillLoader:
         Description: {description}
         Source: {discovered_from}
 
-        {content}
+        {content_truncated}
         ---
         """
         name = skill.get("name", "unknown")
         description = skill.get("description", "")
         discovered_from = skill.get("discovered_from", "")
         content = skill.get("content", "")
+
+        # Truncate content to MAX_CONTENT_CHARS to avoid prompt overflow
+        if len(content) > self.MAX_CONTENT_CHARS:
+            content = content[: self.MAX_CONTENT_CHARS].rstrip() + "\n…[truncated]"
 
         parts = [f"### Transient Skill: {name}"]
         if description:
