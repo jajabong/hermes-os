@@ -20,7 +20,7 @@ from hermes_os.pipeline_engine_v2 import (
     PipelineStage,
     PipelineEngine,
     StageStatus,
-    BatchBatchArtifactMeta,
+    BatchArtifactMeta,
     verify_outline_completeness,
     verify_evidence_density,
     verify_audit_score,
@@ -348,3 +348,193 @@ class TestStageVerification:
 
         result = await verify_audit_score(0.95)
         assert result.passed is True
+
+
+class TestBatchArtifactMetaROI:
+    """Tests for ROI (Commercial Intuition) functionality."""
+
+    def test_calculate_roi_basic(self) -> None:
+        """ROI calculation works correctly."""
+        meta = BatchArtifactMeta(
+            artifact_id="bp_001",
+            title="测试文档",
+            target_audience="投资人",
+            style="formal",
+            current_stage="M1_OUTLINE",
+            status="in_progress",
+            liabilities={"api_cost_usd": 100.0},
+            equity={"realized_revenue_usd": 150.0},
+        )
+
+        roi = meta.calculate_roi()
+        assert roi == 0.5  # (150 - 100) / 100 = 0.5
+
+    def test_calculate_roi_zero_cost(self) -> None:
+        """ROI with zero cost returns 0."""
+        meta = BatchArtifactMeta(
+            artifact_id="bp_001",
+            title="测试文档",
+            target_audience="投资人",
+            style="formal",
+            current_stage="M1_OUTLINE",
+            status="in_progress",
+            liabilities={"api_cost_usd": 0.0},
+            equity={"realized_revenue_usd": 100.0},
+        )
+
+        roi = meta.calculate_roi()
+        assert roi == 0.0
+
+    def test_calculate_roi_negative(self) -> None:
+        """Negative ROI when cost exceeds revenue."""
+        meta = BatchArtifactMeta(
+            artifact_id="bp_001",
+            title="测试文档",
+            target_audience="投资人",
+            style="formal",
+            current_stage="M1_OUTLINE",
+            status="in_progress",
+            liabilities={"api_cost_usd": 100.0},
+            equity={"realized_revenue_usd": 50.0},
+        )
+
+        roi = meta.calculate_roi()
+        assert roi == -0.5  # (50 - 100) / 100 = -0.5
+
+    def test_to_dict_includes_roi(self) -> None:
+        """to_dict includes calculated ROI."""
+        meta = BatchArtifactMeta(
+            artifact_id="bp_001",
+            title="测试文档",
+            target_audience="投资人",
+            style="formal",
+            current_stage="M1_OUTLINE",
+            status="in_progress",
+            liabilities={"api_cost_usd": 50.0},
+            equity={"realized_revenue_usd": 100.0},
+        )
+
+        d = meta.to_dict()
+        assert "roi" in d
+        assert d["roi"] == 1.0
+
+    def test_from_json_restores_roi(self) -> None:
+        """from_json correctly restores all fields including ROI."""
+        original = BatchArtifactMeta(
+            artifact_id="bp_001",
+            title="测试文档",
+            target_audience="投资人",
+            style="formal",
+            current_stage="M5_AUDIT",
+            status="completed",
+            key_thesis=["数字经济"],
+            stage_history=["M1_OUTLINE", "M2_RESEARCH"],
+            audit_score=0.85,
+            liabilities={"api_cost_usd": 75.0, "token_usage": 5000},
+            equity={"realized_revenue_usd": 200.0},
+        )
+
+        json_str = original.to_json()
+        restored = BatchArtifactMeta.from_json(json_str)
+
+        assert restored.artifact_id == original.artifact_id
+        assert restored.title == original.title
+        assert restored.audit_score == original.audit_score
+        assert restored.stage_history == original.stage_history
+        assert restored.liabilities["token_usage"] == 5000
+
+
+class TestPipelineVerificationEdgeCases:
+    """Edge cases for verification functions."""
+
+    @pytest.mark.asyncio
+    async def test_outline_with_only_h1(self) -> None:
+        """Outline with only H1 headings is incomplete."""
+        outline = """
+# 第一章
+# 第二章
+# 第三章
+"""
+        result = await verify_outline_completeness(outline)
+        assert result.passed is False
+
+    @pytest.mark.asyncio
+    async def test_outline_with_deep_hierarchy(self) -> None:
+        """Well-structured outline with deep hierarchy passes."""
+        outline = """
+# 概述
+## 背景
+### 市场现状
+### 政策环境
+## 目标
+# 市场分析
+## 市场规模
+## 竞争格局
+### 主要玩家
+### 市场趋势
+"""
+        result = await verify_outline_completeness(outline)
+        assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_evidence_density_with_citations(self) -> None:
+        """Research with proper citations passes."""
+        research = """
+根据Smith et al. (2023)的研究，全球数字经济规模已达45万亿美元。
+数据显示，我国数字经济占GDP比重超过40%。
+据国家统计局2024年报告显示...
+"""
+        result = await verify_evidence_density(research)
+        assert result.passed is True
+
+    @pytest.mark.asyncio
+    async def test_audit_score_exactly_0_8(self) -> None:
+        """Score of exactly 0.8 passes."""
+        result = await verify_audit_score(0.8)
+        assert result.passed is True
+        assert len(result.errors) == 0
+
+    @pytest.mark.asyncio
+    async def test_audit_score_below_0_8_includes_error(self) -> None:
+        """Score below 0.8 includes error message."""
+        result = await verify_audit_score(0.5)
+        assert result.passed is False
+        assert len(result.errors) == 1
+        assert "0.8" in result.errors[0]
+
+
+class TestPipelineConfigParsing:
+    """Additional parsing tests for PipelineConfig."""
+
+    def test_parse_minimal_yaml(self) -> None:
+        """Can parse minimal YAML with only required fields."""
+        yaml_content = """
+name: "Minimal-Pipeline"
+description: ""
+steps:
+  - stage: M1_OUTLINE
+    labor: "ContentLabor"
+    task: "Outline"
+    verify: "check"
+"""
+        config = PipelineConfig.from_yaml(yaml_content)
+        assert config.name == "Minimal-Pipeline"
+        assert len(config.steps) == 1
+
+    def test_stage_fields_accessible(self) -> None:
+        """Stage fields are accessible."""
+        yaml_content = """
+name: "Test"
+description: "Test"
+steps:
+  - stage: M1_OUTLINE
+    labor: "ContentLabor"
+    task: "Generate outline"
+    verify: "check_outline"
+"""
+        config = PipelineConfig.from_yaml(yaml_content)
+        stage = config.steps[0]
+        assert stage.stage == "M1_OUTLINE"
+        assert stage.labor == "ContentLabor"
+        assert stage.task == "Generate outline"
+        assert stage.verify == "check_outline"

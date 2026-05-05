@@ -113,8 +113,9 @@ class TestGoalTrackerCreate:
     @pytest.fixture
     def tracker(self) -> GoalTracker:
         db_path = "/tmp/test_hermes_goal.db"
-        if os.path.exists(db_path):
-            os.remove(db_path)
+        for path in [db_path, db_path + "-wal", db_path + "-shm"]:
+            if os.path.exists(path):
+                os.remove(path)
         t = GoalTracker(db_path=db_path)
         return t
 
@@ -340,3 +341,202 @@ class TestGoalTrackerPhaseTransitions:
         recent_ids = [g.goal_id for g in recent]
         assert g1.goal_id in recent_ids
         assert g2.goal_id in recent_ids
+
+
+class TestGoalTrackerEdgeCases:
+    """Edge cases and error conditions for GoalTracker."""
+
+    @pytest.fixture
+    def tracker(self) -> GoalTracker:
+        db_path = "/tmp/test_hermes_goal_edge.db"
+        for path in [db_path, db_path + "-wal", db_path + "-shm"]:
+            if os.path.exists(path):
+                os.remove(path)
+        t = GoalTracker(db_path=db_path)
+        return t
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_no_active_goal(self, tracker: GoalTracker) -> None:
+        """Advancing when no active goal returns None."""
+        await tracker.initialize()
+        result = await tracker.advance_phase("nobody")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_complete_nonexistent_goal(self, tracker: GoalTracker) -> None:
+        """Completing a non-existent goal returns None."""
+        await tracker.initialize()
+        result = await tracker.complete_goal("nonexistent-id")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_abandon_nonexistent_goal(self, tracker: GoalTracker) -> None:
+        """Abandoning a non-existent goal returns None."""
+        await tracker.initialize()
+        result = await tracker.abandon_goal("nonexistent-id")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_goal_not_found(self, tracker: GoalTracker) -> None:
+        """Getting a non-existent goal returns None."""
+        await tracker.initialize()
+        result = await tracker.get_goal("nonexistent-id")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_create_goal_with_metadata(self, tracker: GoalTracker) -> None:
+        """Creating a goal with custom metadata works correctly."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="带元数据的测试",
+            initial_intent="research",
+            metadata={"priority": "high", "tags": ["important", "urgent"]},
+        )
+
+        assert goal.metadata == {"priority": "high", "tags": ["important", "urgent"]}
+
+        # Verify metadata persists
+        fetched = await tracker.get_goal(goal.goal_id)
+        assert fetched is not None
+        assert fetched.metadata == {"priority": "high", "tags": ["important", "urgent"]}
+
+    @pytest.mark.asyncio
+    async def test_advance_phase_jump_forward(self, tracker: GoalTracker) -> None:
+        """Can jump to a specific phase instead of advancing sequentially."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="跳阶段测试",
+            initial_intent="research",
+        )
+
+        # Jump directly to deploy phase
+        updated = await tracker.advance_phase("alice", next_phase="deploy")
+
+        assert updated is not None
+        assert updated.current_phase == "deploy"
+        assert updated.phase_index == 4  # deploy is index 4
+
+    @pytest.mark.asyncio
+    async def test_multiple_users_isolated(self, tracker: GoalTracker) -> None:
+        """Goals for different users are isolated."""
+        await tracker.initialize()
+        alice_goal = await tracker.create_goal(
+            user_id="alice",
+            description="Alice的目标",
+            initial_intent="query",
+        )
+        bob_goal = await tracker.create_goal(
+            user_id="bob",
+            description="Bob的目标",
+            initial_intent="query",
+        )
+
+        alice_active = await tracker.get_active_goal("alice")
+        bob_active = await tracker.get_active_goal("bob")
+
+        assert alice_active is not None
+        assert bob_active is not None
+        assert alice_active.goal_id == alice_goal.goal_id
+        assert bob_active.goal_id == bob_goal.goal_id
+
+    @pytest.mark.asyncio
+    async def test_complete_already_completed_goal(self, tracker: GoalTracker) -> None:
+        """Completing an already completed goal returns the goal without changes."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="测试",
+            initial_intent="query",
+        )
+        await tracker.complete_goal(goal.goal_id)
+
+        # Complete again
+        result = await tracker.complete_goal(goal.goal_id)
+        assert result is not None
+        assert result.is_completed
+
+    @pytest.mark.asyncio
+    async def test_progress_calculation_accurate(self, tracker: GoalTracker) -> None:
+        """Progress is calculated correctly at different stages."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="进度测试",
+            initial_intent="research",
+        )
+
+        # Phase 0 of 5 phases
+        assert goal.progress == 0.0
+
+        # Advance to phase 2
+        await tracker.advance_phase("alice", next_phase="implement")
+        goal = await tracker.get_goal(goal.goal_id)
+        assert goal is not None
+        # phase_index 2 / 5 = 0.4
+        assert 0.35 <= goal.progress <= 0.45
+
+
+class TestGoalTrackerInferNextAction:
+    """Tests for infer_next_action() functionality."""
+
+    @pytest.fixture
+    def tracker(self) -> GoalTracker:
+        db_path = "/tmp/test_hermes_infer.db"
+        for path in [db_path, db_path + "-wal", db_path + "-shm"]:
+            if os.path.exists(path):
+                os.remove(path)
+        t = GoalTracker(db_path=db_path)
+        return t
+
+    @pytest.mark.asyncio
+    async def test_infer_next_action_completion_signal(self, tracker: GoalTracker) -> None:
+        """Completion signals trigger next phase suggestion."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="测试推断",
+            initial_intent="research",
+        )
+
+        suggestion = await tracker.infer_next_action("alice", "研究已经完成了")
+        assert suggestion is not None
+        assert "plan" in suggestion
+
+    @pytest.mark.asyncio
+    async def test_infer_next_action_no_active_goal(self, tracker: GoalTracker) -> None:
+        """No suggestion when no active goal."""
+        await tracker.initialize()
+        suggestion = await tracker.infer_next_action("nobody", "做点什么")
+        assert suggestion is None
+
+    @pytest.mark.asyncio
+    async def test_infer_next_action_completed_goal(self, tracker: GoalTracker) -> None:
+        """No suggestion when goal is already completed."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="已完成的目标",
+            initial_intent="query",
+        )
+        await tracker.complete_goal(goal.goal_id)
+
+        suggestion = await tracker.infer_next_action("alice", "继续下一步")
+        assert suggestion is None
+
+    @pytest.mark.asyncio
+    async def test_infer_next_action_approval_phase(self, tracker: GoalTracker) -> None:
+        """Approval-related messages in await_approval phase."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="等待审批",
+            pattern=GoalPattern.PROPOSAL_TO_IMPLEMENT,
+        )
+        # Advance to await_approval phase
+        await tracker.advance_phase("alice", next_phase="await_approval")
+
+        suggestion = await tracker.infer_next_action("alice", "领导已经同意了")
+        assert suggestion is not None
+        assert "approval" in suggestion

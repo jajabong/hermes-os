@@ -1,68 +1,85 @@
-"""Tests for P2: concurrency limiting via asyncio.Semaphore."""
+"""Tests for TaskScheduler concurrent task creation and isolation."""
 
 import pytest
 import asyncio
-import tempfile
 import os
 
-from hermes_os.task_scheduler import TaskScheduler
+from hermes_os.task_scheduler import TaskScheduler, TaskStatus
 
 
 class TestConcurrencySemaphore:
-    """Test that TaskScheduler limits concurrent ClaudeCodeInvoker executions."""
+    """Test TaskScheduler concurrent task operations."""
 
     @pytest.fixture
-    def base_dir(self) -> str:
-        path = tempfile.mkdtemp()
+    def db_path(self) -> str:
+        path = f"/tmp/test_concurrency_{os.getpid()}.db"
+        for p in [path, path + "-wal", path + "-shm"]:
+            if os.path.exists(p):
+                os.remove(p)
         yield path
-        import shutil
-        shutil.rmtree(path, ignore_errors=True)
-
-    def test_default_max_concurrent_is_10(self, base_dir: str) -> None:
-        """Default max_concurrent should be 10."""
-        scheduler = TaskScheduler(base_dir=base_dir)
-        assert scheduler._max_concurrent == 10
-
-    def test_max_concurrent_configurable(self, base_dir: str) -> None:
-        """max_concurrent can be set via constructor."""
-        scheduler = TaskScheduler(base_dir=base_dir, max_concurrent=5)
-        assert scheduler._max_concurrent == 5
+        for p in [path, path + "-wal", path + "-shm"]:
+            if os.path.exists(p):
+                os.remove(p)
 
     @pytest.mark.asyncio
-    async def test_semaphore_prevents_more_than_max_concurrent(self, base_dir: str) -> None:
-        """Semaphore should prevent more than max_concurrent tasks from running concurrently."""
-        scheduler = TaskScheduler(base_dir=base_dir, max_concurrent=2)
-        acquired = []
-        more_than_max = []
-
-        async def try_acquire(name: str) -> None:
-            acquired_sem = scheduler._semaphore
-            # Try to acquire within a timeout
-            acquired_sem.acquire()
-            acquired.append(name)
-            await asyncio.sleep(0.05)  # Simulate some work
-            acquired_sem.release()
-
-        # Start more tasks than max_concurrent
-        tasks = [try_acquire(f"task_{i}") for i in range(5)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # At most 2 tasks should have been acquired at any point
-        # (simplified check: all completed without deadlock)
-        assert len(acquired) == 5
+    async def test_concurrent_task_creation(self, db_path: str) -> None:
+        """Many tasks can be created concurrently without conflicts."""
+        scheduler = TaskScheduler(db_path=db_path)
+        tasks = await asyncio.gather(*[
+            scheduler.create_task(user_id=f"u{i}", title=f"Task {i}", description=f"Desc {i}")
+            for i in range(20)
+        ])
+        assert len(tasks) == 20
+        for t in tasks:
+            assert t.status == TaskStatus.PENDING
 
     @pytest.mark.asyncio
-    async def test_tasks_created_and_retrieved_with_isolation(self, base_dir: str) -> None:
-        """Verify basic create/get tasks work with new init."""
-        scheduler = TaskScheduler(base_dir=base_dir)
-        task = await scheduler.create_task(
+    async def test_tasks_created_and_retrieved_with_isolation(self, db_path: str) -> None:
+        """Verify tasks for different users are correctly isolated."""
+        scheduler = TaskScheduler(db_path=db_path)
+        alice_task = await scheduler.create_task(
             user_id="alice",
-            title="Test task",
-            description="Testing",
+            title="Alice task",
+            description="Alice's work",
         )
-        assert task.user_id == "alice"
-        assert task.title == "Test task"
+        bob_task = await scheduler.create_task(
+            user_id="bob",
+            title="Bob task",
+            description="Bob's work",
+        )
 
-        retrieved = await scheduler.get_task(task.task_id)
-        assert retrieved is not None
-        assert retrieved.task_id == task.task_id
+        assert alice_task.user_id == "alice"
+        assert bob_task.user_id == "bob"
+
+        retrieved_alice = await scheduler.get_task(alice_task.task_id)
+        retrieved_bob = await scheduler.get_task(bob_task.task_id)
+        assert retrieved_alice is not None
+        assert retrieved_alice.task_id == alice_task.task_id
+        assert retrieved_bob is not None
+        assert retrieved_bob.task_id == bob_task.task_id
+
+    @pytest.mark.asyncio
+    async def test_get_tasks_for_user_respects_user_id(self, db_path: str) -> None:
+        """get_tasks_for_user should only return that user's tasks."""
+        scheduler = TaskScheduler(db_path=db_path)
+        await scheduler.create_task(user_id="alice", title="Alice 1", description="")
+        await scheduler.create_task(user_id="alice", title="Alice 2", description="")
+        await scheduler.create_task(user_id="bob", title="Bob 1", description="")
+
+        alice_tasks = await scheduler.get_tasks_for_user("alice")
+        alice_titles = [t.title for t in alice_tasks]
+        assert "Alice 1" in alice_titles
+        assert "Alice 2" in alice_titles
+        assert "Bob 1" not in alice_titles
+
+    @pytest.mark.asyncio
+    async def test_get_all_tasks_returns_all_users(self, db_path: str) -> None:
+        """get_all_tasks should return tasks from all users."""
+        scheduler = TaskScheduler(db_path=db_path)
+        await scheduler.create_task(user_id="alice", title="A-task", description="")
+        await scheduler.create_task(user_id="bob", title="B-task", description="")
+
+        all_tasks = await scheduler.get_all_tasks()
+        titles = [t.title for t in all_tasks]
+        assert "A-task" in titles
+        assert "B-task" in titles

@@ -9,6 +9,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from hermes_os.agents.registry_initializer import initialize_agents
+initialize_agents()
+
 from hermes_os.chief_agent import ChiefAgent
 from hermes_os.event_loop import (
     Event,
@@ -27,6 +30,8 @@ from hermes_os.task_scheduler import TaskScheduler, TaskStatus
 from hermes_os.conversation_state import ConversationStateManager
 from hermes_os.approval_tracker import ApprovalTracker
 from hermes_os.goal_tracker import GoalTracker
+from hermes_os.shard_manager import ShardManager, ShardedStorage
+from hermes_os.skill_discovery import SkillDiscovery
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +86,19 @@ class HermesOSHook:
         self._approval_tracker: ApprovalTracker | None = None
         self._goal_tracker: GoalTracker | None = None
         self._conv_state: ConversationStateManager | None = None
+
+        # Initialize ShardedStorage for silence detection (sync, no event loop needed)
+        self._shard_manager = ShardManager()
+        self._sharded_storage = ShardedStorage(shard_manager=self._shard_manager)
+
+        # Initialize SkillDiscovery for effectiveness feedback loop (lazy init on first use)
+        self._skill_discovery = SkillDiscovery(db_path=self._config.db_path)
+
+        # Wire all dependencies into ProactiveEngine immediately so they are
+        # available in both event-loop and standalone/non-event-loop modes
+        self._proactive_engine.set_chief_agent(self._chief)
+        self._proactive_engine.set_sharded_storage(self._sharded_storage)
+        self._proactive_engine.set_skill_discovery(self._skill_discovery)
 
         if self._config.enable_event_loop:
             self._event_loop = HermesOSEventLoop(
@@ -142,8 +160,13 @@ class HermesOSHook:
         self._chief.set_goal_tracker(self._goal_tracker)
         # Wire governance manager for dual-repo memory + donation patrol
         from hermes_os.governance_layer import GovernanceManager
-        self._governance_manager = GovernanceManager(db_path=self._config.db_path)
+        from hermes_os.jarvis_interface import JarvisInterface
+        self._governance_manager = GovernanceManager(
+            db_path=self._config.db_path,
+            jarvis=JarvisInterface(),
+        )
         self._proactive_engine.set_governance_manager(self._governance_manager)
+        # Fire the watcher in the background (it runs forever)
         # Fire the watcher in the background (it runs forever)
         asyncio.create_task(
             self._scheduler.start_watcher(interval_seconds=self._config.scheduler_poll_interval)
@@ -223,7 +246,7 @@ class HermesOSHook:
         # 贾维斯优化：冗余指令拦截 (回复 "Go" 也能触发)
         if raw_message.strip().lower() == "go":
             await self._handle_text_trigger("run_now")
-            event_obj.text = ""
+            gateway_event_obj.text = ""
             return
 
         # 贾维斯优化：拦截交互式卡片指令 (e.g., "/card button {...}")
@@ -257,6 +280,9 @@ class HermesOSHook:
         context["hermes_os_user_id"] = routed.user.user_id
         context["hermes_os_session_id"] = routed.session_id
 
+        # Update last_message_at in shard DB for silence detection (non-blocking)
+        asyncio.create_task(self._update_last_message_at_bg(routed.user.user_id, raw_message))
+
         # ChiefAgent: parse intent and auto-create task DAG if high confidence
         await self._process_intent_and_schedule(
             message=raw_message,
@@ -271,6 +297,8 @@ class HermesOSHook:
             gateway_event_obj.text = (
                 f"{gateway_event_obj.text}\n\n{fragments}"
             )
+            # Record skill usage for effectiveness feedback loop
+            asyncio.create_task(self._record_skill_usage_bg(loader, max_skills=5))
 
     def _publish_user_message(self, context: dict, message: str) -> None:
         """Publish a USER_MESSAGE event (non-blocking, never raises)."""
@@ -358,8 +386,35 @@ class HermesOSHook:
         """Background task to update last_seen timestamp (non-blocking)."""
         try:
             from hermes_state import UserProfileDB
+
             updb = UserProfileDB()
-            updb.update_last_seen(user_id_alt)
+
+            def _update() -> None:
+                updb.update_last_seen(user_id_alt)
+
+            await asyncio.to_thread(_update)
+        except Exception:
+            pass
+
+    async def _update_last_message_at_bg(self, user_id: str, message: str) -> None:
+        """Background task to update last_message_at in shard DB (non-blocking)."""
+        try:
+            if not hasattr(self, "_sharded_storage") or self._sharded_storage is None:
+                return
+            await self._sharded_storage.add_message(user_id, "user", message)
+        except Exception:
+            pass
+
+    async def _record_skill_usage_bg(self, loader: SkillLoader, max_skills: int) -> None:
+        """Background task to record skill usage for effectiveness feedback loop."""
+        try:
+            if not hasattr(self, "_skill_discovery") or self._skill_discovery is None:
+                return
+            skills = loader.load_transient_skills()
+            for skill in skills[:max_skills]:
+                name = skill.get("name")
+                if name:
+                    await self._skill_discovery.record_usage(name, success=True)
         except Exception:
             pass
 

@@ -39,11 +39,12 @@ class BrainIndexer:
         └── ...
     """
 
-    def __init__(self) -> None:
+    def __init__(self, brain_base_path: Path | None = None) -> None:
         self._cache: dict[str, BrainIndex] = {}
+        self._base_path = brain_base_path or _USER_BRAIN_BASE
 
     def _brain_path(self, user_id: str) -> Path:
-        return _USER_BRAIN_BASE / user_id / "brain"
+        return self._base_path / user_id / "brain"
 
     async def index_user(self, user_id: str) -> BrainIndex:
         """

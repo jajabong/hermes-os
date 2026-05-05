@@ -804,7 +804,21 @@ class EpubRenderLabor:
 
 
 class PdfRenderLabor:
-    """Labor for rendering Markdown manuscript as PDF using pandoc."""
+    """Labor for rendering Markdown manuscript as PDF using pandoc.
+
+    Uses pandoc with available PDF engine (xelatex > pdflatex > lualatex > weasyprint).
+    Falls back to standalone HTML if no PDF engine is available.
+    """
+
+    PDF_ENGINES = ["xelatex", "pdflatex", "lualatex", "weasyprint"]
+
+    def _find_pdf_engine(self) -> str | None:
+        """Return the first available PDF engine or None."""
+        import shutil
+        for engine in self.PDF_ENGINES:
+            if shutil.which(engine):
+                return engine
+        return None
 
     async def execute(
         self,
@@ -816,6 +830,7 @@ class PdfRenderLabor:
         """Execute PDF rendering via pandoc."""
         import time
         import subprocess
+        import shutil
         start = time.monotonic()
 
         try:
@@ -835,34 +850,51 @@ class PdfRenderLabor:
                 )
 
             output_artifact = context.get("pdf_output", "book.pdf")
-            pdf_path = workspace.render_path / output_artifact
-            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path = workspace.render_path / output_artifact
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Two-step: pandoc markdown → HTML, then weasyprint HTML → PDF
-            html_path = workspace.render_path / "book_intermediate.html"
-            result = subprocess.run(
-                ["pandoc", str(input_path), "-o", str(html_path), "--standalone"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
+            engine = self._find_pdf_engine()
+
+            if engine is None:
+                # Fall back: produce standalone HTML with table of contents
+                html_path = workspace.render_path / output_artifact.replace(".pdf", ".html")
+                result = subprocess.run(
+                    [
+                        "pandoc", str(input_path),
+                        "-o", str(html_path),
+                        "--standalone",
+                        "--toc",
+                        "--metadata", "title=Manuscript",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    return LaborResult(
+                        success=False,
+                        error=f"pandoc HTML conversion failed: {result.stderr}",
+                        duration_seconds=time.monotonic() - start,
+                    )
                 return LaborResult(
-                    success=False,
-                    error=f"pandoc markdown→html failed: {result.stderr}",
+                    success=True,
+                    output_artifact=html_path.name,
+                    output_content="No PDF engine installed — produced HTML instead. Install xelatex, pdflatex, or weasyprint for PDF output.",
                     duration_seconds=time.monotonic() - start,
                 )
 
-            result = subprocess.run(
-                ["weasyprint", str(html_path), str(pdf_path)],
-                capture_output=True,
-                text=True,
-            )
-            html_path.unlink(missing_ok=True)  # Clean up intermediate
+            # Use pandoc with discovered PDF engine
+            cmd = [
+                "pandoc", str(input_path),
+                "-o", str(output_path),
+                f"--pdf-engine={engine}",
+                "--toc",
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
 
             if result.returncode != 0:
                 return LaborResult(
                     success=False,
-                    error=f"weasyprint failed: {result.stderr}",
+                    error=f"pandoc PDF ({engine}) failed: {result.stderr}",
                     duration_seconds=time.monotonic() - start,
                 )
 

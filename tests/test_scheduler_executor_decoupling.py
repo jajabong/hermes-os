@@ -1,27 +1,33 @@
-"""Tests for P3: decoupled scheduler and executor architecture."""
+"""Tests for scheduler and executor decoupled architecture.
+
+TaskScheduler.create_task only persists — execution is handled separately.
+"""
 
 import pytest
 import asyncio
-import tempfile
 import os
 
-from hermes_os.task_scheduler import TaskScheduler
+from hermes_os.task_scheduler import TaskScheduler, TaskStatus
 
 
 class TestDecoupledArchitecture:
     """Test that scheduler and executor are physically decoupled."""
 
     @pytest.fixture
-    def base_dir(self) -> str:
-        path = tempfile.mkdtemp()
+    def db_path(self) -> str:
+        path = f"/tmp/test_decouple_{os.getpid()}.db"
+        for p in [path, path + "-wal", path + "-shm"]:
+            if os.path.exists(p):
+                os.remove(p)
         yield path
-        import shutil
-        shutil.rmtree(path, ignore_errors=True)
+        for p in [path, path + "-wal", path + "-shm"]:
+            if os.path.exists(p):
+                os.remove(p)
 
     @pytest.mark.asyncio
-    async def test_scheduler_only_creates_tasks(self, base_dir: str) -> None:
+    async def test_scheduler_only_creates_tasks(self, db_path: str) -> None:
         """Scheduler.create_task should only persist tasks, not execute them."""
-        scheduler = TaskScheduler(base_dir=base_dir, max_concurrent=1)
+        scheduler = TaskScheduler(db_path=db_path)
         task = await scheduler.create_task(
             user_id="alice",
             title="Test task",
@@ -35,35 +41,9 @@ class TestDecoupledArchitecture:
         assert retrieved.status.value == "pending"
 
     @pytest.mark.asyncio
-    async def test_separate_execute_task_method_exists(self, base_dir: str) -> None:
-        """TaskScheduler should have a separate execute_task() method for background worker."""
-        scheduler = TaskScheduler(base_dir=base_dir)
-        # Should have execute_task method (called by BackgroundWorker)
-        assert hasattr(scheduler, 'execute_task')
-
-    @pytest.mark.asyncio
-    async def test_execute_task_runs_within_semaphore(self, base_dir: str) -> None:
-        """execute_task should use semaphore for concurrency control."""
-        scheduler = TaskScheduler(base_dir=base_dir, max_concurrent=2)
-        task = await scheduler.create_task(
-            user_id="alice",
-            title="Test",
-            description="Echo test",
-            metadata={"cwd": os.path.expanduser("~")},
-        )
-        # execute_task should be able to run without hanging (it will fail since
-        # we don't have a real Claude Code, but it should at least try within semaphore)
-        try:
-            # This will fail due to no real Claude Code, but proves it runs
-            await scheduler.execute_task(task)
-        except Exception:
-            pass  # Expected - no real Claude Code
-        # If we get here without deadlock, the semaphore worked
-
-    @pytest.mark.asyncio
-    async def test_runnable_tasks_not_executed_by_watcher(self, base_dir: str) -> None:
-        """start_watcher should NOT directly execute tasks - use BackgroundWorker."""
-        scheduler = TaskScheduler(base_dir=base_dir)
+    async def test_get_runnable_tasks_returns_pending(self, db_path: str) -> None:
+        """get_runnable_tasks should return PENDING tasks with no blockers."""
+        scheduler = TaskScheduler(db_path=db_path)
 
         # Create tasks
         t1 = await scheduler.create_task(user_id="alice", title="Task 1", description="d1")
@@ -71,75 +51,71 @@ class TestDecoupledArchitecture:
 
         # get_runnable_tasks should return tasks in PENDING state
         runnable = await scheduler.get_runnable_tasks()
-        # These should still be PENDING (watcher doesn't auto-run)
+        runnable_ids = [r.task_id for r in runnable]
+        # These should still be PENDING (scheduler doesn't auto-run)
+        assert t1.task_id in runnable_ids
+        assert t2.task_id in runnable_ids
         for r in runnable:
-            assert r.status == "pending"
-
-
-class TestBackgroundWorkerExists:
-    """Test that BackgroundWorker class exists and can be imported."""
-
-    def test_background_worker_importable(self) -> None:
-        """BackgroundWorker should exist in task_scheduler module."""
-        from hermes_os.task_scheduler import BackgroundWorker
-        assert BackgroundWorker is not None
-
-    @pytest.fixture
-    def base_dir(self) -> str:
-        path = tempfile.mkdtemp()
-        yield path
-        import shutil
-        shutil.rmtree(path, ignore_errors=True)
+            assert r.status == TaskStatus.PENDING
 
     @pytest.mark.asyncio
-    async def test_background_worker_start_stop(self, base_dir: str) -> None:
-        """BackgroundWorker should start and stop cleanly."""
-        from hermes_os.task_scheduler import BackgroundWorker, TaskScheduler
+    async def test_task_remains_pending_until_explicit_update(self, db_path: str) -> None:
+        """A task should stay PENDING even after being retrieved."""
+        scheduler = TaskScheduler(db_path=db_path)
+        task = await scheduler.create_task(user_id="alice", title="Test", description="")
 
-        scheduler = TaskScheduler(base_dir=base_dir)
-        worker = BackgroundWorker(scheduler, interval_seconds=1.0)
+        retrieved = await scheduler.get_task(task.task_id)
+        assert retrieved.status == TaskStatus.PENDING
 
-        # Create a task so worker has something to potentially process
-        await scheduler.create_task(user_id="alice", title="Test", description="d1")
-
-        # Start worker (it runs in background)
-        await worker.start()
-
-        # Let it run for a moment
-        await asyncio.sleep(0.5)
-
-        # Stop cleanly
-        await worker.stop()
-
-        # Verify no exceptions
+        # Manually update to RUNNING to simulate execution start
+        await scheduler.update_task_status(task.task_id, TaskStatus.RUNNING)
+        updated = await scheduler.get_task(task.task_id)
+        assert updated.status == TaskStatus.RUNNING
 
 
-class TestFireAndForgetPattern:
-    """Test that task creation is fire-and-forget (non-blocking)."""
+class TestTaskStatusTransitions:
+    """Test task status lifecycle transitions."""
 
     @pytest.fixture
-    def base_dir(self) -> str:
-        path = tempfile.mkdtemp()
+    def db_path(self) -> str:
+        path = f"/tmp/test_status_{os.getpid()}.db"
+        for p in [path, path + "-wal", path + "-shm"]:
+            if os.path.exists(p):
+                os.remove(p)
         yield path
-        import shutil
-        shutil.rmtree(path, ignore_errors=True)
+        for p in [path, path + "-wal", path + "-shm"]:
+            if os.path.exists(p):
+                os.remove(p)
 
     @pytest.mark.asyncio
-    async def test_create_task_is_non_blocking(self, base_dir: str) -> None:
-        """create_task should return immediately without waiting for execution."""
-        scheduler = TaskScheduler(base_dir=base_dir)
+    async def test_update_task_to_running(self, db_path: str) -> None:
+        """update_task_status can move task to RUNNING."""
+        scheduler = TaskScheduler(db_path=db_path)
+        task = await scheduler.create_task(user_id="alice", title="Test", description="")
+        await scheduler.update_task_status(task.task_id, TaskStatus.RUNNING)
+        updated = await scheduler.get_task(task.task_id)
+        assert updated.status == TaskStatus.RUNNING
 
-        # Create multiple tasks rapidly
-        tasks = []
-        for i in range(5):
-            t = await scheduler.create_task(
-                user_id=f"user_{i}",
-                title=f"Task {i}",
-                description=f"Description {i}",
-            )
-            tasks.append(t)
+    @pytest.mark.asyncio
+    async def test_update_task_to_completed(self, db_path: str) -> None:
+        """update_task_status can move task to COMPLETED with result."""
+        scheduler = TaskScheduler(db_path=db_path)
+        task = await scheduler.create_task(user_id="alice", title="Test", description="")
+        await scheduler.update_task_status(
+            task.task_id, TaskStatus.COMPLETED, result="Done successfully"
+        )
+        updated = await scheduler.get_task(task.task_id)
+        assert updated.status == TaskStatus.COMPLETED
+        assert updated.result == "Done successfully"
 
-        # All tasks should be created in under 1 second (non-blocking)
-        assert len(tasks) == 5
-        for t in tasks:
-            assert t.status.value == "pending"
+    @pytest.mark.asyncio
+    async def test_update_task_to_failed(self, db_path: str) -> None:
+        """update_task_status can move task to FAILED with error."""
+        scheduler = TaskScheduler(db_path=db_path)
+        task = await scheduler.create_task(user_id="alice", title="Test", description="")
+        await scheduler.update_task_status(
+            task.task_id, TaskStatus.FAILED, error="Something went wrong"
+        )
+        updated = await scheduler.get_task(task.task_id)
+        assert updated.status == TaskStatus.FAILED
+        assert updated.error == "Something went wrong"

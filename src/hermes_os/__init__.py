@@ -86,6 +86,30 @@ from hermes_os.artifact_manager import (
     ArtifactStage,
     ArtifactStatus,
 )
+from hermes_os.vertical_agent import (
+    AgentRequest,
+    AgentResult,
+    VerticalAgent,
+    AgentRegistry,
+    get_agent_registry,
+)
+from hermes_os.memory_hub import (
+    MemoryHub,
+    ContextMemory,
+    IdentityMemory,
+    PreferencesMemory,
+    RecentContextMemory,
+    KnowledgeMemory,
+)
+from hermes_os.unified_router import (
+    UnifiedRouter,
+    RouteResult,
+    INTENT_AGENT_MAP,
+)
+from hermes_os.output_adapter import (
+    OutputStyle,
+    OutputAdapter,
+)
 
 __version__ = "0.3.0"
 
@@ -185,4 +209,24 @@ __all__ = [
     "ArtifactWorkspace",
     "ArtifactStage",
     "ArtifactStatus",
+    # Vertical Agent
+    "AgentRequest",
+    "AgentResult",
+    "VerticalAgent",
+    "AgentRegistry",
+    "get_agent_registry",
+    # Memory Hub
+    "MemoryHub",
+    "ContextMemory",
+    "IdentityMemory",
+    "PreferencesMemory",
+    "RecentContextMemory",
+    "KnowledgeMemory",
+    # Unified Router
+    "UnifiedRouter",
+    "RouteResult",
+    "INTENT_AGENT_MAP",
+    # Output Adapter
+    "OutputStyle",
+    "OutputAdapter",
 ]

@@ -336,6 +336,7 @@ class GoalTracker:
             # Jump to specific phase
             if next_phase in goal.phases:
                 new_index = goal.phases.index(next_phase)
+                new_phase = next_phase
             else:
                 # Treat as completion
                 new_phase = "completed"
@@ -486,7 +487,13 @@ class GoalTracker:
 
         entry_id = str(uuid.uuid4())
         now = datetime.now(UTC)
-        previous_description = goal.description
+
+        # Get the last evolution entry to chain descriptions
+        history = await self.get_evolution_history(goal_id)
+        if history:
+            previous_description = history[-1].new_description
+        else:
+            previous_description = goal.description
 
         await db.execute(
             """
@@ -610,7 +617,7 @@ class GoalTracker:
     # -------------------------------------------------------------------------
 
     def _row_to_goal(self, row: aiosqlite.Row) -> GoalState:
-        metadata_str = row.get("metadata")
+        metadata_str = row["metadata"]
         metadata: dict = {}
         if metadata_str:
             try:
@@ -629,7 +636,7 @@ class GoalTracker:
             updated_at = datetime.now(UTC)
 
         completed_at = None
-        if row.get("completed_at"):
+        if row["completed_at"]:
             try:
                 completed_at = datetime.fromisoformat(row["completed_at"])
             except (ValueError, TypeError):

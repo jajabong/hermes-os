@@ -131,6 +131,9 @@ class SkillDiscovery:
         # Ensure transient skills directory exists
         TRANSIENT_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
 
+    def initialize_sync(self) -> None:
+        """No-op stub — actual initialization happens lazily via _lazy_init()."""
+
     def _check_gh(self) -> bool:
         """Check if gh CLI is available."""
         if self._gh_available is None:

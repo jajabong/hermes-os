@@ -39,8 +39,9 @@ class TestGoalEvolution:
     @pytest.fixture
     def tracker(self) -> GoalTracker:
         db_path = "/tmp/test_hermes_evolution.db"
-        if os.path.exists(db_path):
-            os.remove(db_path)
+        for path in [db_path, db_path + "-wal", db_path + "-shm"]:
+            if os.path.exists(path):
+                os.remove(path)
         t = GoalTracker(db_path=db_path)
         return t
 
@@ -145,8 +146,9 @@ class TestGetContextWithEvolution:
     @pytest.fixture
     def tracker(self) -> GoalTracker:
         db_path = "/tmp/test_hermes_evolution_ctx.db"
-        if os.path.exists(db_path):
-            os.remove(db_path)
+        for path in [db_path, db_path + "-wal", db_path + "-shm"]:
+            if os.path.exists(path):
+                os.remove(path)
         t = GoalTracker(db_path=db_path)
         return t
 
@@ -187,3 +189,104 @@ class TestGetContextWithEvolution:
         context_no_evo = await tracker.get_active_goal_context("alice")
 
         assert context == context_no_evo
+
+
+class TestEvolutionEdgeCases:
+    """Edge cases for evolution tracking."""
+
+    @pytest.fixture
+    def tracker(self) -> GoalTracker:
+        db_path = "/tmp/test_evolution_edge.db"
+        for path in [db_path, db_path + "-wal", db_path + "-shm"]:
+            if os.path.exists(path):
+                os.remove(path)
+        t = GoalTracker(db_path=db_path)
+        return t
+
+    @pytest.mark.asyncio
+    async def test_append_evolution_invalid_goal_raises(self, tracker: GoalTracker) -> None:
+        """Appending evolution log for non-existent goal raises ValueError."""
+        await tracker.initialize()
+        with pytest.raises(ValueError, match="Goal .* not found"):
+            await tracker.append_evolution_log(
+                goal_id="nonexistent-id",
+                new_description="新描述",
+                reason="测试原因",
+                trigger="user_input",
+            )
+
+    @pytest.mark.asyncio
+    async def test_evolution_trigger_types(self, tracker: GoalTracker) -> None:
+        """Different trigger types are recorded correctly."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="初始目标",
+            initial_intent="research",
+        )
+
+        triggers = ["user_input", "system_suggestion", "completion"]
+        for i, trigger in enumerate(triggers):
+            await tracker.append_evolution_log(
+                goal.goal_id,
+                f"目标版本{i+1}",
+                f"触发原因{i}",
+                trigger=trigger,
+            )
+
+        history = await tracker.get_evolution_history(goal.goal_id)
+        assert len(history) == 3
+        assert history[0].trigger == "user_input"
+        assert history[1].trigger == "system_suggestion"
+        assert history[2].trigger == "completion"
+
+    @pytest.mark.asyncio
+    async def test_evolution_preserves_previous_description(self, tracker: GoalTracker) -> None:
+        """Each evolution entry preserves the previous description."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="v1.0",
+            initial_intent="research",
+        )
+
+        await tracker.append_evolution_log(goal.goal_id, "v2.0", "更新", "user_input")
+        await tracker.append_evolution_log(goal.goal_id, "v3.0", "再次更新", "user_input")
+
+        history = await tracker.get_evolution_history(goal.goal_id)
+        assert history[0].previous_description == "v1.0"
+        assert history[0].new_description == "v2.0"
+        assert history[1].previous_description == "v2.0"
+        assert history[1].new_description == "v3.0"
+
+    @pytest.mark.asyncio
+    async def test_get_latest_evolution_reason_empty(self, tracker: GoalTracker) -> None:
+        """No evolution returns None for latest reason."""
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="无历史目标",
+            initial_intent="query",
+        )
+
+        latest = await tracker.get_latest_evolution_reason(goal.goal_id)
+        assert latest is None
+
+    @pytest.mark.asyncio
+    async def test_evolution_timestamps_increasing(self, tracker: GoalTracker) -> None:
+        """Evolution timestamps are in chronological order."""
+        import time
+        await tracker.initialize()
+        goal = await tracker.create_goal(
+            user_id="alice",
+            description="时间戳测试",
+            initial_intent="research",
+        )
+
+        await tracker.append_evolution_log(goal.goal_id, "版本2", "原因1", "user_input")
+        time.sleep(0.01)  # Small delay to ensure different timestamps
+        await tracker.append_evolution_log(goal.goal_id, "版本3", "原因2", "user_input")
+
+        history = await tracker.get_evolution_history(goal.goal_id)
+        assert len(history) == 2
+        assert history[0].timestamp <= history[1].timestamp

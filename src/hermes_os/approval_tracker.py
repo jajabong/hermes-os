@@ -347,7 +347,7 @@ class ApprovalTracker:
     def _row_to_record(self, row: aiosqlite.Row) -> ApprovalRecord | None:
         """Convert a DB row to an ApprovalRecord."""
         try:
-            metadata_str = row.get("metadata")
+            metadata_str = row["metadata"]
             metadata: dict = {}
             if metadata_str:
                 try:
@@ -370,12 +370,12 @@ class ApprovalTracker:
             return None
 
         try:
-            reminder_at = datetime.fromisoformat(row["reminder_at"]) if row.get("reminder_at") else None
+            reminder_at = datetime.fromisoformat(row["reminder_at"]) if row["reminder_at"] else None
         except (ValueError, TypeError):
             reminder_at = None
 
         decided_at = None
-        if row.get("decided_at"):
+        if row["decided_at"]:
             try:
                 decided_at = datetime.fromisoformat(row["decided_at"])
             except (ValueError, TypeError):
@@ -393,6 +393,6 @@ class ApprovalTracker:
             deadline_at=deadline_at,
             reminder_at=reminder_at,
             decided_at=decided_at,
-            comment=row.get("comment"),
+            comment=row["comment"],
             metadata=metadata,
         )

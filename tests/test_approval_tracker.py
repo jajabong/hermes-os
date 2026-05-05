@@ -331,3 +331,175 @@ class TestApprovalTrackerReminder:
         delta_deadline = record.deadline_at - record.created_at
         # Both should be roughly 2 and 3 days (working days)
         assert delta_reminder < delta_deadline
+
+
+class TestApprovalTrackerEdgeCases:
+    """Edge cases and error conditions for ApprovalTracker."""
+
+    @pytest.fixture
+    def tracker(self, temp_db_path: Path) -> ApprovalTracker:
+        return ApprovalTracker(db_path=str(temp_db_path))
+
+    @pytest.mark.asyncio
+    async def test_get_record_not_found(self, tracker: ApprovalTracker) -> None:
+        """Getting a non-existent record returns None."""
+        await tracker.initialize()
+        result = await tracker.get_record("nonexistent-id")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_approve_not_found(self, tracker: ApprovalTracker) -> None:
+        """Approving a non-existent approval returns None."""
+        await tracker.initialize()
+        result = await tracker.approve("nonexistent-id", approver_id="bob")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_reject_not_found(self, tracker: ApprovalTracker) -> None:
+        """Rejecting a non-existent approval returns None."""
+        await tracker.initialize()
+        result = await tracker.reject("nonexistent-id", approver_id="bob")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_expire_not_found(self, tracker: ApprovalTracker) -> None:
+        """Expiring a non-existent approval returns None."""
+        await tracker.initialize()
+        result = await tracker.expire("nonexistent-id")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_expire_already_decided(self, tracker: ApprovalTracker) -> None:
+        """Expiring an already decided approval returns None."""
+        await tracker.initialize()
+        approval_id = await tracker.submit_for_approval(
+            task_id="t1", doc_type="request", user_id="alice",
+            approver_id="bob", title="测试",
+        )
+        await tracker.approve(approval_id, approver_id="bob")
+
+        result = await tracker.expire(approval_id)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_submit_with_custom_deadline(self, tracker: ApprovalTracker) -> None:
+        """Custom deadline_days is respected."""
+        await tracker.initialize()
+        approval_id = await tracker.submit_for_approval(
+            task_id="t1", doc_type="request", user_id="alice",
+            approver_id="bob", title="自定义截止日期",
+            deadline_days=5,
+        )
+
+        record = await tracker.get_record(approval_id)
+        assert record is not None
+        # 5 working days should be added
+        expected_delta = timedelta(days=7)  # 5 working days = ~7 calendar days
+        actual_delta = record.deadline_at - record.created_at
+        assert actual_delta.days >= 5  # At least 5 working days worth
+
+    @pytest.mark.asyncio
+    async def test_submit_with_metadata(self, tracker: ApprovalTracker) -> None:
+        """Metadata is stored correctly."""
+        await tracker.initialize()
+        metadata = {"priority": "high", "category": "budget"}
+        approval_id = await tracker.submit_for_approval(
+            task_id="t1", doc_type="request", user_id="alice",
+            approver_id="bob", title="带元数据的请求",
+            metadata=metadata,
+        )
+
+        record = await tracker.get_record(approval_id)
+        assert record is not None
+        assert record.metadata == metadata
+
+    @pytest.mark.asyncio
+    async def test_check_reminders_empty(self, tracker: ApprovalTracker) -> None:
+        """check_reminders returns empty list when no reminders are due."""
+        await tracker.initialize()
+        # Submit a new approval
+        await tracker.submit_for_approval(
+            task_id="t1", doc_type="request", user_id="alice",
+            approver_id="bob", title="测试提醒",
+        )
+
+        reminders = await tracker.check_reminders()
+        # May or may not have reminders depending on timing
+        assert isinstance(reminders, list)
+
+    @pytest.mark.asyncio
+    async def test_check_expired_empty(self, tracker: ApprovalTracker) -> None:
+        """check_expired returns empty list when no approvals are expired."""
+        await tracker.initialize()
+        # Submit a new approval
+        await tracker.submit_for_approval(
+            task_id="t1", doc_type="request", user_id="alice",
+            approver_id="bob", title="测试过期",
+        )
+
+        expired = await tracker.check_expired()
+        # May or may not have expired depending on timing
+        assert isinstance(expired, list)
+
+    @pytest.mark.asyncio
+    async def test_get_pending_for_user_empty(self, tracker: ApprovalTracker) -> None:
+        """User with no pending approvals returns empty list."""
+        await tracker.initialize()
+        pending = await tracker.get_pending_for_user("nobody")
+        assert pending == []
+
+    @pytest.mark.asyncio
+    async def test_approve_with_null_comment(self, tracker: ApprovalTracker) -> None:
+        """Approving with None comment works correctly."""
+        await tracker.initialize()
+        approval_id = await tracker.submit_for_approval(
+            task_id="t1", doc_type="request", user_id="alice",
+            approver_id="bob", title="无评论审批",
+        )
+
+        result = await tracker.approve(approval_id, approver_id="bob", comment=None)
+
+        assert result is not None
+        assert result.status == ApprovalStatus.APPROVED
+        assert result.comment is None
+
+    @pytest.mark.asyncio
+    async def test_reject_with_null_comment(self, tracker: ApprovalTracker) -> None:
+        """Rejecting with None comment works correctly."""
+        await tracker.initialize()
+        approval_id = await tracker.submit_for_approval(
+            task_id="t1", doc_type="request", user_id="alice",
+            approver_id="bob", title="无评论拒绝",
+        )
+
+        result = await tracker.reject(approval_id, approver_id="bob", comment=None)
+
+        assert result is not None
+        assert result.status == ApprovalStatus.REJECTED
+        assert result.comment is None
+
+
+class TestApprovalTrackerWorkingDays:
+    """Tests for working day calculations."""
+
+    def test_add_working_days_weekend_only(self) -> None:
+        """Starting Saturday, add 1 day = Monday."""
+        saturday = datetime(2026, 4, 25, 10, 0, 0)  # Saturday
+        result = _add_working_days(saturday, 1)
+        assert result == datetime(2026, 4, 27, 10, 0, 0)  # Monday
+
+    def test_add_working_days_10_days(self) -> None:
+        """Add 10 working days from Monday."""
+        monday = datetime(2026, 4, 27, 10, 0, 0)  # Monday
+        result = _add_working_days(monday, 10)
+        # Monday + 10 working days = 2 weeks later (Monday)
+        assert result == datetime(2026, 5, 11, 10, 0, 0)
+
+    def test_add_working_days_crossing_month(self) -> None:
+        """Working days calculation crosses month boundary."""
+        # May 1, 2026 is a Friday
+        friday = datetime(2026, 5, 1, 10, 0, 0)
+        result = _add_working_days(friday, 1)
+        # Should be Monday May 4
+        assert result.weekday() < 5  # Not weekend
+        assert result.month == 5

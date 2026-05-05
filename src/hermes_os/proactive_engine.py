@@ -30,6 +30,50 @@ logger = logging.getLogger(__name__)
 # Patrol interval: do deep checks every N ticks (every N * 60 seconds)
 _DEEP_PATROL_INTERVAL = 5  # every 5 minutes
 
+# Silence detection thresholds (in hours)
+SILENCE_GREETING_HOURS = 24   # → friendly greeting card
+SILENCE_REMINDER_HOURS = 72   # → goal/task reminder card
+SILENCE_URGENT_HOURS = 168    # → urgent outreach (1 week)
+
+
+class PatrolReport:
+    """Result of a deep patrol cycle."""
+
+    def __init__(
+        self,
+        tick_count: int = 0,
+        silence_greeted: int = 0,
+        tasks_fixed: int = 0,
+        tasks_unblocked: int = 0,
+        skills_solidified: int = 0,
+        skills_discarded: int = 0,
+        suggestions_sent: int = 0,
+        approvals_reminded: int = 0,
+        errors: list[str] | None = None,
+    ) -> None:
+        self.tick_count = tick_count
+        self.silence_greeted = silence_greeted
+        self.tasks_fixed = tasks_fixed
+        self.tasks_unblocked = tasks_unblocked
+        self.skills_solidified = skills_solidified
+        self.skills_discarded = skills_discarded
+        self.suggestions_sent = suggestions_sent
+        self.approvals_reminded = approvals_reminded
+        self.errors = errors or []
+
+    def to_dict(self) -> dict:
+        return {
+            "tick_count": self.tick_count,
+            "silence_greeted": self.silence_greeted,
+            "tasks_fixed": self.tasks_fixed,
+            "tasks_unblocked": self.tasks_unblocked,
+            "skills_solidified": self.skills_solidified,
+            "skills_discarded": self.skills_discarded,
+            "suggestions_sent": self.suggestions_sent,
+            "approvals_reminded": self.approvals_reminded,
+            "errors": self.errors,
+        }
+
 
 class ProactiveEngine:
     """
@@ -42,11 +86,16 @@ class ProactiveEngine:
     are fire-and-forget coroutines.
     """
 
+    # Rate limit: max notifications per user per minute
+    MAX_NOTIFICATIONS_PER_MINUTE = 5
+
     def __init__(self, scheduler: TaskScheduler | None = None) -> None:
         self._scheduler = scheduler
         self._org_memory: "OrgMemory | None" = None
         self._last_deep_patrol_tick = 0
-        self._pending_notifications: list[str] = []
+        self._pending_notifications: list[tuple[str, str]] = []
+        # In-memory rate limiter: user_id → (count, window_start_ts)
+        self._notif_rate: dict[str, tuple[int, float]] = {}
 
     def set_scheduler(self, scheduler: TaskScheduler) -> None:
         """Inject scheduler after lazy initialization."""
@@ -67,6 +116,18 @@ class ProactiveEngine:
     def set_governance_manager(self, manager: Any) -> None:
         """Inject governance manager for quality content patrol."""
         self._governance_manager = manager
+
+    def set_sharded_storage(self, storage: Any) -> None:
+        """Inject ShardedStorage for silence detection queries."""
+        self._sharded_storage = storage
+
+    def set_skill_discovery(self, discovery: Any) -> None:
+        """Inject SkillDiscovery for effectiveness feedback loop."""
+        self._skill_discovery = discovery
+
+    def set_chief_agent(self, chief: Any) -> None:
+        """Inject ChiefAgent for proactive suggestions based on task patterns."""
+        self._chief_agent = chief
 
     # -------------------------------------------------------------------------
     # Workflow engine access
@@ -200,56 +261,83 @@ class ProactiveEngine:
         except Exception:
             pass
 
-    async def _deep_patrol(self, tick_count: int) -> None:
+    async def _deep_patrol(self, tick_count: int) -> PatrolReport:
         """
-        Deep patrol every ~5 minutes:
-        1. Failed tasks → auto-create fix tasks
-        2. Blocked tasks → try to auto-unblock
-        3. Long-running tasks → check for hangs
-        4. Send proactive notifications to users
-        5. Run scheduled workflows (daily briefing at tick_count % 1440 == 0)
-        6. Patrol pending approvals → reminders + auto-expire
+        Deep patrol every ~5 minutes.
+        Returns a PatrolReport with counts of all actions taken.
         """
         if not self._scheduler:
-            return
+            return PatrolReport(tick_count=tick_count, errors=["No scheduler"])
 
         logger.info("=== Deep Patrol #%d ===", tick_count)
 
+        report = PatrolReport(tick_count=tick_count)
+
         try:
             # 1. Patrol all users with failed tasks
-            await self._patrol_failed_tasks()
+            report.tasks_fixed = await self._patrol_failed_tasks()
 
             # 2. Patrol blocked tasks
-            await self._patrol_blocked_tasks()
+            report.tasks_unblocked = await self._patrol_blocked_tasks()
 
             # 3. Check for hanging tasks
             await self._patrol_hanging_tasks()
 
             # 4. Send proactive notifications
-            await self._send_proactive_notifications()
+            report.suggestions_sent = await self._send_proactive_notifications()
 
             # 5. Run scheduled daily briefing (every 1440 ticks = 24h at 60s/tick)
             if tick_count > 0 and tick_count % 1440 == 0:
                 await self._run_scheduled_daily_briefing()
 
             # 6. Patrol pending approvals (时效追踪)
-            await self._patrol_pending_approvals()
+            report.approvals_reminded = await self._patrol_pending_approvals()
 
             # 7. Patrol quality content for governance donation
             await self._patrol_quality_content()
 
-        except Exception:
+            # 8. Silence detection + proactive outreach
+            greeted, reminded, urgent = await self._detect_and_reach_out()
+            report.silence_greeted = greeted + reminded + urgent
+
+            # 9. Skill effectiveness review: solidify or discard transient skills
+            solidified, discarded = await self._solidify_skill_cycle()
+            report.skills_solidified = solidified
+            report.skills_discarded = discarded
+
+            # 10. Proactive suggestions: call ChiefAgent for pattern-based recommendations
+            await self._patrol_proactive_suggestions()
+
+            logger.info(
+                "Deep Patrol #%d done: fixed=%d unblocked=%d silence=%d "
+                "skills_solidified=%d skills_discarded=%d suggestions=%d "
+                "approvals_reminded=%d",
+                tick_count,
+                report.tasks_fixed,
+                report.tasks_unblocked,
+                report.silence_greeted,
+                report.skills_solidified,
+                report.skills_discarded,
+                report.suggestions_sent,
+                report.approvals_reminded,
+            )
+
+        except Exception as e:
             logger.exception("Deep patrol failed")
+            report.errors.append(str(e))
+
+        return report
 
     # -------------------------------------------------------------------------
     # Per-category patrol logic
     # -------------------------------------------------------------------------
 
-    async def _patrol_failed_tasks(self) -> None:
-        """For each failed task, auto-create a fix subtask if none exists."""
+    async def _patrol_failed_tasks(self) -> int:
+        """For each failed task, auto-create a fix subtask if none exists. Returns count created."""
         if not self._scheduler:
-            return
+            return 0
 
+        created = 0
         try:
             # Get all failed tasks across all users
             all_tasks = await self._scheduler.get_all_tasks()
@@ -290,6 +378,7 @@ class ProactiveEngine:
                     subtasks=[{"title": fix_title, "description": fix_desc}],
                     metadata=metadata,
                 )
+                created += 1
 
                 logger.info(
                     "Auto-fix task created for failed task %s: %s",
@@ -310,11 +399,14 @@ class ProactiveEngine:
         except Exception:
             logger.exception("Failed task patrol error")
 
-    async def _patrol_blocked_tasks(self) -> None:
-        """For blocked tasks, try to auto-unblock if dependencies are satisfied."""
-        if not self._scheduler:
-            return
+        return created
 
+    async def _patrol_blocked_tasks(self) -> int:
+        """For blocked tasks, try to auto-unblock if dependencies are satisfied. Returns count."""
+        if not self._scheduler:
+            return 0
+
+        unblocked = 0
         try:
             all_tasks = await self._scheduler.get_all_tasks()
             blocked_tasks = [t for t in all_tasks if t.status.value == "blocked"]
@@ -327,6 +419,7 @@ class ProactiveEngine:
                     await self._scheduler.update_task_status(
                         task.task_id, task.status, error=None
                     )
+                    unblocked += 1
                     logger.info("Auto-unblocked task %s (no dependencies)", task.task_id)
                     continue
 
@@ -345,6 +438,7 @@ class ProactiveEngine:
                     await self._scheduler.update_task_status(
                         task.task_id, TaskStatus.PENDING, error=None
                     )
+                    unblocked += 1
                     logger.info(
                         "Auto-unblocked task %s (dependencies satisfied)",
                         task.task_id,
@@ -352,6 +446,8 @@ class ProactiveEngine:
 
         except Exception:
             logger.exception("Blocked task patrol error")
+
+        return unblocked
 
     async def _patrol_hanging_tasks(self) -> None:
         """Detect tasks running for too long and mark them as potentially hanging."""
@@ -385,15 +481,15 @@ class ProactiveEngine:
         except Exception:
             logger.exception("Hanging task patrol error")
 
-    async def _patrol_pending_approvals(self) -> None:
+    async def _patrol_pending_approvals(self) -> int:
         """
-        Check pending approvals for时效追踪:
-        1. Send reminders to approvers when reminder_at has passed
-        2. Expire approvals past deadline and notify submitter
+        Check pending approvals for时效追踪.
+        Returns count of notifications sent.
         """
         if not hasattr(self, "_approval_tracker") or not self._approval_tracker:
-            return
+            return 0
 
+        sent = 0
         try:
             # 1. Expire approvals past deadline
             expired = await self._approval_tracker.check_expired()
@@ -407,6 +503,7 @@ class ProactiveEngine:
                         f"超期未批复，已自动过期。"
                     ),
                 )
+                sent += 1
                 logger.info(
                     "Approval %s expired for document: %s",
                     record.approval_id,
@@ -424,6 +521,7 @@ class ProactiveEngine:
                         f"请尽快批复，超期将自动过期。"
                     ),
                 )
+                sent += 1
                 logger.info(
                     "Approval reminder sent for: %s (approver=%s)",
                     record.title,
@@ -432,6 +530,8 @@ class ProactiveEngine:
 
         except Exception:
             logger.exception("Approval patrol error")
+
+        return sent
 
     async def _patrol_quality_content(self) -> None:
         """
@@ -500,19 +600,168 @@ class ProactiveEngine:
         except Exception:
             logger.exception("Quality content patrol error")
 
-    async def _send_proactive_notifications(self) -> None:
-        """Send enqueued notifications via Feishu."""
+    async def _send_proactive_notifications(self) -> int:
+        """Send enqueued notifications via Feishu. Returns count of successfully sent."""
         if not self._pending_notifications:
-            return
+            return 0
 
         notifications = self._pending_notifications[:]
         self._pending_notifications = []
 
+        sent = 0
         for user_id, message in notifications:
             try:
-                await self._send_feishu_message(user_id, message)
+                if await self._send_feishu_message(user_id, message):
+                    sent += 1
             except Exception:
                 logger.exception("Failed to send proactive notification to user %s", user_id)
+        return sent
+
+    # -------------------------------------------------------------------------
+    # Silence detection + proactive outreach
+    # -------------------------------------------------------------------------
+
+    async def _detect_and_reach_out(self) -> tuple[int, int, int]:
+        """Main entry point for silence patrol. Returns (greeted, reminded, urgent)."""
+        if not hasattr(self, "_sharded_storage") or not self._sharded_storage:
+            return 0, 0, 0
+
+        greeted = reminded = urgent = 0
+        try:
+            silent_users = await self._detect_silent_users()
+            for user in silent_users:
+                level = user["silence_level"]
+                if level == "greeting":
+                    greeted += 1
+                elif level == "reminder":
+                    reminded += 1
+                elif level == "urgent":
+                    urgent += 1
+                await self.on_user_silent(
+                    user["user_id"],
+                    user["silence_hours"],
+                    user["silence_level"],
+                )
+        except Exception:
+            logger.exception("Silence detection patrol error")
+
+        return greeted, reminded, urgent
+
+    async def _detect_silent_users(self) -> list[dict]:
+        """Return list of silent users with their silence level classified.
+
+        Returns:
+            List of dicts: [{"user_id": str, "silence_hours": float, "silence_level": str}]
+        """
+        from datetime import UTC, datetime
+
+        storage = self._sharded_storage
+        sm = storage.shard_manager
+        silent_users: list[dict] = []
+
+        # Iterate all shard DBs to find users with conversation_states
+        all_user_ids: set[str] = set()
+        for db_path in sm.all_db_paths():
+            # db_path = ~/.hermes/users/{shard}/{user_id}.db
+            user_id = db_path.stem  # filename without .db
+            all_user_ids.add(user_id)
+
+        for user_id in all_user_ids:
+            try:
+                state = await storage.get_conversation_state(user_id)
+                if not state:
+                    continue
+
+                last_msg_at_str = state["last_message_at"] if "last_message_at" in state.keys() else None
+                if not last_msg_at_str:
+                    continue
+
+                last_msg_at = datetime.fromisoformat(last_msg_at_str)
+                silence_hours = (datetime.now(UTC) - last_msg_at).total_seconds() / 3600
+
+                if silence_hours >= SILENCE_URGENT_HOURS:
+                    level = "urgent"
+                elif silence_hours >= SILENCE_REMINDER_HOURS:
+                    level = "reminder"
+                elif silence_hours >= SILENCE_GREETING_HOURS:
+                    level = "greeting"
+                else:
+                    continue  # Not silent enough
+
+                silent_users.append({
+                    "user_id": user_id,
+                    "silence_hours": silence_hours,
+                    "silence_level": level,
+                })
+
+            except Exception:
+                continue
+
+        return silent_users
+
+    async def on_user_silent(
+        self,
+        user_id: str,
+        silence_hours: float,
+        silence_level: str,
+    ) -> None:
+        """Hook called when a silent user is detected.
+
+        Override this method to customize outreach behavior.
+        Default: send a Feishu card based on silence level.
+        """
+        from hermes_os.user_registry import UserRegistry
+
+        # Get user's name for personalization
+        name = user_id  # fallback
+        try:
+            registry = UserRegistry()
+            user = await registry.get_user(user_id)
+            if user:
+                name = user.name or name
+        except Exception:
+            pass
+
+        if silence_level == "greeting":
+            message = self._build_silence_greeting(name, int(silence_hours))
+        elif silence_level == "reminder":
+            suggestions = await self.get_suggestions_for_user(user_id)
+            message = self._build_silence_reminder(name, int(silence_hours), suggestions)
+        else:  # urgent
+            suggestions = await self.get_suggestions_for_user(user_id)
+            message = self._build_silence_reminder(name, int(silence_hours), suggestions)
+            message = message + "\n\n⚠️ 您已超过一周未使用Hermes OS，有任何问题请随时联系我。"
+
+        await self._enqueue_notification(user_id, message)
+
+    def _build_silence_greeting(self, name: str, hours: int) -> str:
+        """Build a friendly greeting card for a returning user."""
+        return (
+            f"👋 你好{name}！\n\n"
+            f"距离上次对话已有{hours}小时。\n\n"
+            f"有什么我可以帮你的吗？\n"
+            f"- 💻 代码/调试\n"
+            f"- 📊 投资分析\n"
+            f"- 📝 内容创作\n"
+            f"- 🔍 市场调研\n"
+            f"- ❓ 其他问题"
+        )
+
+    def _build_silence_reminder(self, name: str, hours: int, pending_tasks: list[str]) -> str:
+        """Build a reminder card with the user's pending tasks/goals."""
+        lines = [
+            f"📌 {name}，距离上次对话已有{hours}小时。",
+        ]
+
+        if pending_tasks:
+            lines.append("\n待处理事项：")
+            for task in pending_tasks[:3]:
+                lines.append(f"  • {task}")
+        else:
+            lines.append("\n目前没有待处理的任务。")
+
+        lines.append("\n有需要随时召唤我！")
+        return "\n".join(lines)
 
     # -------------------------------------------------------------------------
     # Task event handlers (TASK_COMPLETED, TASK_FAILED)
@@ -646,18 +895,37 @@ class ProactiveEngine:
         """Add a notification to the queue (sent on next patrol cycle)."""
         self._pending_notifications.append((user_id, message))
 
-    async def _send_feishu_message(self, user_id: str, message: str) -> None:
+    async def _send_feishu_message(self, user_id: str, message: str) -> bool:
         """
-        Send a Feishu message to a user.
-        Uses JarvisInterface for unified outbound communication.
+        Send a Feishu message to a user with rate limiting.
+        Returns True if sent, False if rate-limited.
         """
+        import time
+
+        now = time.time()
+        window = 60.0  # 1-minute window
+
+        # Rate limit check
+        if user_id in self._notif_rate:
+            count, window_start = self._notif_rate[user_id]
+            if now - window_start < window:
+                if count >= self.MAX_NOTIFICATIONS_PER_MINUTE:
+                    logger.debug("Rate limit exceeded for user %s (%d/min)", user_id, count)
+                    return False
+                self._notif_rate[user_id] = (count + 1, window_start)
+            else:
+                # Window expired, reset
+                self._notif_rate[user_id] = (1, now)
+        else:
+            self._notif_rate[user_id] = (1, now)
+
         try:
             from hermes_os.jarvis_interface import JarvisInterface
 
             jarvis = JarvisInterface()
             await jarvis._feishu.send_message_to_user(user_id=user_id, message=message)
             logger.debug("Proactive Feishu notification sent to %s", user_id)
-            return
+            return True
         except ImportError:
             pass
         except Exception:
@@ -665,6 +933,7 @@ class ProactiveEngine:
 
         # Fallback: log
         logger.info("Proactive notification to %s: %s", user_id, message)
+        return True
 
     # -------------------------------------------------------------------------
     # Proactive suggestions (called by ChiefAgent or external consumers)
@@ -674,36 +943,170 @@ class ProactiveEngine:
         """
         Return proactive suggestions for a specific user.
         Used by the event loop or Feishu to push actionable items.
+
+        Combines task-based suggestions (from TaskScheduler) with
+        ChiefAgent's proactive suggestions (from conversation patterns).
         """
-        if not self._scheduler:
-            return []
-
         suggestions: list[str] = []
-        try:
-            all_tasks = await self._scheduler.get_all_tasks()
-            user_tasks = [t for t in all_tasks if t.user_id == user_id]
 
-            failed = [t for t in user_tasks if t.status.value == "failed"][:1]
-            for t in failed:
-                suggestions.append(
-                    f"❌ 失败任务需要关注: {t.title}\n"
-                    f"  错误: {t.error[:60] if t.error else '未知'}..."
-                )
+        # Task-based suggestions
+        if self._scheduler:
+            try:
+                all_tasks = await self._scheduler.get_all_tasks()
+                user_tasks = [t for t in all_tasks if t.user_id == user_id]
 
-            blocked = [t for t in user_tasks if t.status.value == "blocked"][:1]
-            for t in blocked:
-                deps = ", ".join(t.depends_on[:2])
-                suggestions.append(f"🔒 任务被阻塞: {t.title}\n  等待: {deps}")
-
-            pending = [t for t in user_tasks if t.status.value == "pending"][:1]
-            for t in pending:
-                if t.metadata.get("macro_title"):
+                failed = [t for t in user_tasks if t.status.value == "failed"][:1]
+                for t in failed:
                     suggestions.append(
-                        f"📋 进行中的任务: {t.metadata['macro_title']}\n"
-                        f"  待处理: {t.title}"
+                        f"❌ 失败任务需要关注: {t.title}\n"
+                        f"  错误: {t.error[:60] if t.error else '未知'}..."
                     )
 
+                blocked = [t for t in user_tasks if t.status.value == "blocked"][:1]
+                for t in blocked:
+                    deps = ", ".join(t.depends_on[:2])
+                    suggestions.append(f"🔒 任务被阻塞: {t.title}\n  等待: {deps}")
+
+                pending = [t for t in user_tasks if t.status.value == "pending"][:1]
+                for t in pending:
+                    if t.metadata.get("macro_title"):
+                        suggestions.append(
+                            f"📋 进行中的任务: {t.metadata['macro_title']}\n"
+                            f"  待处理: {t.title}"
+                        )
+            except Exception:
+                logger.exception("get_suggestions_for_user error")
+
+        # ChiefAgent proactive suggestions (based on conversation patterns)
+        if hasattr(self, "_chief_agent") and self._chief_agent and self._scheduler:
+            try:
+                chief_suggestions = await self._chief_agent.get_proactive_suggestions(
+                    user_id=user_id,
+                    scheduler=self._scheduler,
+                    max_suggestions=3,
+                )
+                suggestions.extend(chief_suggestions)
+            except Exception:
+                logger.exception("ChiefAgent proactive suggestions error")
+
+        return suggestions[:3]
+
+    # -------------------------------------------------------------------------
+    # Skill effectiveness feedback loop (solidify / discard)
+    # -------------------------------------------------------------------------
+
+    async def _solidify_skill_cycle(self) -> tuple[int, int]:
+        """Review transient skills and solidify or discard based on effectiveness.
+
+        Calls SkillDiscovery.run_solidify_cycle() which:
+        - success_rate >= 0.8 and uses >= 3 → solidify (move to permanent skills/)
+        - success_rate < 0.5 and uses >= 2 → discard (remove from _transient/)
+        - otherwise → keep_transient
+
+        Returns (solidified_count, discarded_count).
+        """
+        if not hasattr(self, "_skill_discovery") or not self._skill_discovery:
+            return 0, 0
+
+        solidified = discarded = 0
+        try:
+            result = await self._skill_discovery.run_solidify_cycle()
+            if result.get("solidified"):
+                solidified = len(result["solidified"])
+            if result.get("discarded"):
+                discarded = len(result["discarded"])
+            if any(result.values()):
+                logger.info(
+                    "Skill solidify cycle: %s",
+                    ", ".join(f"{k}={len(v)}" for k, v in result.items() if v),
+                )
         except Exception:
-            logger.exception("get_suggestions_for_user error")
+            logger.exception("Skill solidify cycle error")
+
+        return solidified, discarded
+
+    # -------------------------------------------------------------------------
+    # ChiefAgent proactive suggestions patrol
+    # -------------------------------------------------------------------------
+
+    async def _patrol_proactive_suggestions(self) -> None:
+        """Iterate all shard DB users and proactively suggest next actions via ChiefAgent.
+
+        This is the "Chief proactive mode" — analyzes conversation patterns,
+        failed/blocked tasks, and goal context to suggest next actions WITHOUT
+        the user having to ask.
+        """
+        if not hasattr(self, "_chief_agent") or not self._chief_agent:
+            return
+        if not hasattr(self, "_sharded_storage") or not self._sharded_storage:
+            return
+
+        try:
+            sm = self._sharded_storage.shard_manager
+            all_paths = sm.all_db_paths()
+
+            # Batch-fetch all tasks ONCE to avoid O(n*m) scheduler calls
+            all_tasks: list = []
+            if self._scheduler:
+                try:
+                    all_tasks = await self._scheduler.get_all_tasks()
+                except Exception:
+                    pass
+
+            for db_path in all_paths:
+                user_id = db_path.stem
+                try:
+                    suggestions = await self._get_suggestions_for_user_batch(user_id, all_tasks)
+                    if suggestions:
+                        combined = "\n".join(f"• {s}" for s in suggestions[:3])
+                        await self._enqueue_notification(
+                            user_id=user_id,
+                            message=(
+                                f"💡 主动建议：\n{combined}\n\n"
+                                f"有什么我可以帮您的吗？"
+                            ),
+                        )
+                except Exception:
+                    continue
+        except Exception:
+            logger.exception("Proactive suggestions patrol error")
+
+    async def _get_suggestions_for_user_batch(self, user_id: str, all_tasks: list) -> list[str]:
+        """Get suggestions for a user using pre-fetched task list (batch mode)."""
+        suggestions: list[str] = []
+
+        user_tasks = [t for t in all_tasks if t.user_id == user_id]
+
+        failed = [t for t in user_tasks if t.status.value == "failed"][:1]
+        for t in failed:
+            suggestions.append(
+                f"❌ 失败任务需要关注: {t.title}\n"
+                f"  错误: {t.error[:60] if t.error else '未知'}..."
+            )
+
+        blocked = [t for t in user_tasks if t.status.value == "blocked"][:1]
+        for t in blocked:
+            deps = ", ".join(t.depends_on[:2])
+            suggestions.append(f"🔒 任务被阻塞: {t.title}\n  等待: {deps}")
+
+        pending = [t for t in user_tasks if t.status.value == "pending"][:1]
+        for t in pending:
+            if t.metadata.get("macro_title"):
+                suggestions.append(
+                    f"📋 进行中的任务: {t.metadata['macro_title']}\n"
+                    f"  待处理: {t.title}"
+                )
+
+        # ChiefAgent proactive suggestions
+        if hasattr(self, "_chief_agent") and self._chief_agent and self._scheduler:
+            try:
+                chief_suggestions = await self._chief_agent.get_proactive_suggestions(
+                    user_id=user_id,
+                    scheduler=self._scheduler,
+                    max_suggestions=3,
+                )
+                suggestions.extend(chief_suggestions)
+            except Exception:
+                pass
 
         return suggestions[:3]

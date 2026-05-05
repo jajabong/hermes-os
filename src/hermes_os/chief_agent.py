@@ -156,12 +156,13 @@ return the PRIMARY one (highest confidence).
 ## Output Schema
 Return ONLY valid JSON matching this schema (no markdown, no explanation):
 {{
-  "action": "fix_bug|deploy|research|code|review|test|build|query|unknown",
+  "action": "fix_bug|deploy|research|code|review|test|build|query|write_book|unknown",
   "confidence": 0.0-1.0,
   "entities": {{
     "target": "file/module/server target",
     "language": "programming language if applicable",
     "server": "deployment target if applicable",
+    "topic": "book/script topic if applicable",
     "urgency": "low|normal|high|critical"
   }},
   "suggested_next": ["suggested follow-up action 1", "..."]

@@ -608,9 +608,18 @@ class TestPdfRenderLabor:
     """TDD tests for PdfRenderLabor — Markdown → PDF via pandoc."""
 
     @pytest.mark.asyncio
-    async def test_renders_pdf_with_pandoc(self, temp_dir: Path) -> None:
-        """PdfRenderLabor should render markdown as PDF using pandoc + weasyprint."""
-        from unittest.mock import MagicMock, patch, call
+    async def test_finds_pdf_engine(self) -> None:
+        """PdfRenderLabor should detect available PDF engines."""
+        from hermes_os.pipeline_engine import PdfRenderLabor
+        labor = PdfRenderLabor()
+        # Engine may or may not be installed, but method should not raise
+        engine = labor._find_pdf_engine()
+        assert engine is None or isinstance(engine, str)
+
+    @pytest.mark.asyncio
+    async def test_renders_with_available_pdf_engine(self, temp_dir: Path) -> None:
+        """PdfRenderLabor renders PDF when a PDF engine is installed."""
+        from unittest.mock import MagicMock, patch
         from hermes_os.pipeline_engine import PdfRenderLabor, PipelineWorkspace
 
         ws_root = temp_dir / "artifacts" / "pdf-test-001"
@@ -632,23 +641,68 @@ class TestPdfRenderLabor:
         mock_result = MagicMock()
         mock_result.returncode = 0
 
-        with patch("subprocess.run", new_callable=MagicMock) as mock_run:
-            mock_run.return_value = mock_result
-            result = await labor.execute(
-                description="Render PDF",
-                input_artifact="manuscript.md",
-                workspace=ws,
-                context={},
-            )
+        # Mock _find_pdf_engine to return "xelatex" so it attempts PDF
+        with patch.object(labor, "_find_pdf_engine", return_value="xelatex"):
+            with patch("subprocess.run", new_callable=MagicMock) as mock_run:
+                mock_run.return_value = mock_result
+                result = await labor.execute(
+                    description="Render PDF",
+                    input_artifact="manuscript.md",
+                    workspace=ws,
+                    context={},
+                )
 
         assert result.success is True
-        # Verify pandoc (markdown→html) and weasyprint (html→pdf) were called
-        assert mock_run.call_count == 2
-        calls = mock_run.call_args_list
-        # First call: pandoc markdown → html
-        assert "pandoc" in calls[0][0][0]
-        # Second call: weasyprint html → pdf
-        assert "weasyprint" in calls[1][0][0]
+        assert result.output_artifact == "book.pdf"
+        # pandoc should be called with --pdf-engine=xelatex
+        assert mock_run.call_count == 1
+        call_args = mock_run.call_args_list[0][0][0]
+        assert "pandoc" in call_args
+        assert "--pdf-engine=xelatex" in call_args
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_html_when_no_pdf_engine(self, temp_dir: Path) -> None:
+        """PdfRenderLabor produces HTML when no PDF engine is installed."""
+        from unittest.mock import MagicMock, patch
+        from hermes_os.pipeline_engine import PdfRenderLabor, PipelineWorkspace
+
+        ws_root = temp_dir / "artifacts" / "pdf-test-003"
+        ws_root.mkdir(parents=True)
+        (ws_root / "src").mkdir()
+        (ws_root / "render").mkdir()
+
+        input_content = "# Test Book\n\n## Chapter 1\n\nHello world."
+        (ws_root / "src" / "manuscript.md").write_text(input_content, "utf-8")
+
+        ws = PipelineWorkspace(
+            task_id="pdf-test-003",
+            pipeline_name="book",
+            root_path=ws_root,
+        )
+
+        labor = PdfRenderLabor()
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+
+        with patch.object(labor, "_find_pdf_engine", return_value=None):
+            with patch("subprocess.run", new_callable=MagicMock) as mock_run:
+                mock_run.return_value = mock_result
+                result = await labor.execute(
+                    description="Render PDF",
+                    input_artifact="manuscript.md",
+                    workspace=ws,
+                    context={},
+                )
+
+        assert result.success is True
+        assert result.output_artifact == "book.html"
+        assert "no pdf engine" in result.output_content.lower()
+        # pandoc should be called once for HTML output
+        assert mock_run.call_count == 1
+        call_args = mock_run.call_args_list[0][0][0]
+        assert "pandoc" in call_args
+        assert str(ws_root / "render" / "book.html") in call_args
 
     @pytest.mark.asyncio
     async def test_returns_error_when_input_missing(self, temp_dir: Path) -> None:

@@ -33,13 +33,21 @@ class TestBrainIndexerBasic:
     @pytest.mark.asyncio
     async def test_index_user_loads_brain_files(self) -> None:
         """BrainIndexer reads MEMORY.md, USER.md, wiki/ from brain directory."""
-        indexer = BrainIndexer()
-        idx = await indexer.index_user("ou_33a93e8392079a003de7dd5744820ddc")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            brain_dir = Path(tmpdir) / "test_user" / "brain"
+            brain_dir.mkdir(parents=True)
+            (brain_dir / "MEMORY.md").write_text("# Memory\n\nTest memory content")
+            (brain_dir / "USER.md").write_text("# User\nname: Test User\nrole: developer")
+            (brain_dir / "wiki" / "项目").mkdir(parents=True)
+            (brain_dir / "wiki" / "项目" / "TestProject.md").write_text("# TestProject\nstatus: active")
 
-        assert idx.user_id == "ou_33a93e8392079a003de7dd5744820ddc"
-        # Should have loaded real brain content
-        assert idx.memory_summary is not None
-        assert len(idx.memory_summary) > 0
+            indexer = BrainIndexer(brain_base_path=Path(tmpdir))
+            idx = await indexer.index_user("test_user")
+
+            assert idx.user_id == "test_user"
+            assert idx.memory_summary is not None
+            assert len(idx.memory_summary) > 0
+            assert "Test memory content" in idx.memory_summary
 
     @pytest.mark.asyncio
     async def test_index_user_nonexistent_returns_empty(self) -> None:
@@ -53,13 +61,14 @@ class TestBrainIndexerBasic:
     @pytest.mark.asyncio
     async def test_search_wiki_by_keyword(self) -> None:
         """search_wiki returns matching wiki entries."""
-        indexer = BrainIndexer()
-        results = await indexer.search_wiki(
-            "ou_33a93e8392079a003de7dd5744820ddc",
-            keyword="Hermes",
-        )
-        # Should find Hermes-OS wiki entry
-        assert len(results) >= 0  # May be empty if no match
+        with tempfile.TemporaryDirectory() as tmpdir:
+            brain_dir = Path(tmpdir) / "test_user" / "brain" / "wiki" / "概念"
+            brain_dir.mkdir(parents=True)
+            (brain_dir / "HermesOS.md").write_text("# HermesOS\nAI native organization")
+
+            indexer = BrainIndexer(brain_base_path=Path(tmpdir))
+            results = await indexer.search_wiki("test_user", keyword="Hermes")
+            assert isinstance(results, list)
 
 
 class TestBrainIndexProjects:
@@ -68,21 +77,27 @@ class TestBrainIndexProjects:
     @pytest.mark.asyncio
     async def test_get_active_projects(self) -> None:
         """get_active_projects returns project names from wiki/项目/."""
-        indexer = BrainIndexer()
-        projects = await indexer.get_active_projects("ou_33a93e8392079a003de7dd5744820ddc")
-        # Should detect Hermes-OS project
-        assert isinstance(projects, list)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            brain_dir = Path(tmpdir) / "test_user" / "brain" / "wiki" / "项目"
+            brain_dir.mkdir(parents=True)
+            (brain_dir / "TestProject.md").write_text("# TestProject\nstatus: active")
+
+            indexer = BrainIndexer(brain_base_path=Path(tmpdir))
+            projects = await indexer.get_active_projects("test_user")
+            assert isinstance(projects, list)
 
     @pytest.mark.asyncio
     async def test_get_project_context(self) -> None:
         """get_project_context returns detailed project info from wiki."""
-        indexer = BrainIndexer()
-        context = await indexer.get_project_context(
-            "ou_33a93e8392079a003de7dd5744820ddc",
-            "Hermes-OS",
-        )
-        # Returns None if project not found, or dict with project details
-        assert context is None or isinstance(context, dict)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            brain_dir = Path(tmpdir) / "test_user" / "brain" / "wiki" / "项目"
+            brain_dir.mkdir(parents=True)
+            (brain_dir / "TestProject.md").write_text("# TestProject\nstatus: active\nprogress: 50%")
+
+            indexer = BrainIndexer(brain_base_path=Path(tmpdir))
+            context = await indexer.get_project_context("test_user", "TestProject")
+            # Returns None if project not found, or dict with project details
+            assert context is None or isinstance(context, dict)
 
 
 # ---------------------------------------------------------------------------
