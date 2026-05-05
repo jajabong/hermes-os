@@ -381,8 +381,46 @@ class TaskScheduler:
         logger.info("Manually retrying task %s (attempt %d)", task.task_id, retry_count + 1)
         return True
 
+    async def _detect_cycles(self, tasks: list[Task]) -> dict[str, list[str]]:
+        """Detect directed cycles in the task dependency graph.
+
+        Uses DFS-based cycle detection. Returns a dict mapping each task in a
+        cycle to the list of task_ids in that cycle.
+
+        An empty dict means no cycles detected.
+        """
+        # Build adjacency list: task_id -> set of tasks it depends on
+        graph: dict[str, list[str]] = {t.task_id: list(t.depends_on) for t in tasks}
+        visited: set[str] = set()
+        rec_stack: set[str] = set()
+        cycles: dict[str, list[str]] = {}
+
+        def dfs(node: str, path: list[str]) -> None:
+            visited.add(node)
+            rec_stack.add(node)
+            path.append(node)
+
+            for neighbor in graph.get(node, []):
+                if neighbor not in visited:
+                    dfs(neighbor, path)
+                elif neighbor in rec_stack:
+                    # Found a cycle — extract the cycle nodes
+                    cycle_start = path.index(neighbor)
+                    cycle_nodes = path[cycle_start:]
+                    for cy_node in cycle_nodes:
+                        cycles[cy_node] = cycle_nodes
+
+            path.pop()
+            rec_stack.remove(node)
+
+        for task in tasks:
+            if task.task_id not in visited:
+                dfs(task.task_id, [])
+
+        return cycles
+
     async def get_runnable_tasks(self) -> list[Task]:
-        """Get all pending tasks whose dependencies are satisfied."""
+        """Get all pending tasks whose dependencies are satisfied and not in a cycle."""
         await self._lazy_init()
         db = await self._get_db()
         async with db.execute(
@@ -390,8 +428,14 @@ class TaskScheduler:
         ) as cursor:
             all_pending = [Task.from_row(dict(row)) for row in await cursor.fetchall()]
 
+        # Detect cycles first — exclude all cyclic tasks from being runnable
+        cycles = await self._detect_cycles(all_pending)
+        cyclic_task_ids = set(cycles.keys())
+
         runnable = []
         for task in all_pending:
+            if task.task_id in cyclic_task_ids:
+                continue
             if not task.depends_on:
                 runnable.append(task)
                 continue

@@ -259,7 +259,7 @@ class ProactiveEngine:
                     stats["blocked"],
                 )
         except Exception:
-            pass
+            logger.warning("Patrol shallow check failed for tick #%d", tick_count)
 
     async def _deep_patrol(self, tick_count: int) -> PatrolReport:
         """
@@ -720,7 +720,7 @@ class ProactiveEngine:
             if user:
                 name = user.name or name
         except Exception:
-            pass
+            logger.warning("Patrol shallow check failed for tick #%d", tick_count)
 
         if silence_level == "greeting":
             message = self._build_silence_greeting(name, int(silence_hours))

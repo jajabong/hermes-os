@@ -87,6 +87,9 @@ class HermesOSHook:
         self._goal_tracker: GoalTracker | None = None
         self._conv_state: ConversationStateManager | None = None
 
+        # Track fire-and-forget async tasks to prevent leak
+        self._pending_tasks: set[asyncio.Task[None]] = set()
+
         # Initialize ShardedStorage for silence detection (sync, no event loop needed)
         self._shard_manager = ShardManager()
         self._sharded_storage = ShardedStorage(shard_manager=self._shard_manager)
@@ -107,7 +110,7 @@ class HermesOSHook:
             )
             self._register_event_handlers()
             # Start the event loop immediately (it runs forever in background)
-            asyncio.create_task(self._event_loop.start())
+            self._spawn(self._event_loop.start())
 
         # Start GitHub webhook server if configured (skip in test mode)
         if self._config.github_webhook_port and self._config.enable_event_loop:
@@ -167,8 +170,7 @@ class HermesOSHook:
         )
         self._proactive_engine.set_governance_manager(self._governance_manager)
         # Fire the watcher in the background (it runs forever)
-        # Fire the watcher in the background (it runs forever)
-        asyncio.create_task(
+        self._spawn(
             self._scheduler.start_watcher(interval_seconds=self._config.scheduler_poll_interval)
         )
         logger.info("TaskScheduler watcher started (poll_interval=%.1fs)", self._config.scheduler_poll_interval)
@@ -227,6 +229,12 @@ class HermesOSHook:
             await self._cli.initialize()
         return self._cli
 
+    def _spawn(self, coro) -> None:
+        """Launch a fire-and-forget async task, tracking it for cleanup."""
+        task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
     async def handle(self, event_type: str, context: dict) -> None:
         """Enrich the gateway event's message text before agent:start or command:start.
 
@@ -260,7 +268,7 @@ class HermesOSHook:
         if user_id_alt:
             profile = self._get_user_profile(user_id_alt)
             if profile:
-                asyncio.create_task(self._update_last_seen_bg(user_id_alt))
+                self._spawn(self._update_last_seen_bg(user_id_alt))
 
         # Publish USER_MESSAGE event (non-blocking, even if processing fails)
         self._publish_user_message(context, raw_message)
@@ -281,7 +289,7 @@ class HermesOSHook:
         context["hermes_os_session_id"] = routed.session_id
 
         # Update last_message_at in shard DB for silence detection (non-blocking)
-        asyncio.create_task(self._update_last_message_at_bg(routed.user.user_id, raw_message))
+        self._spawn(self._update_last_message_at_bg(routed.user.user_id, raw_message))
 
         # ChiefAgent: parse intent and auto-create task DAG if high confidence
         await self._process_intent_and_schedule(
@@ -298,7 +306,7 @@ class HermesOSHook:
                 f"{gateway_event_obj.text}\n\n{fragments}"
             )
             # Record skill usage for effectiveness feedback loop
-            asyncio.create_task(self._record_skill_usage_bg(loader, max_skills=5))
+            self._spawn(self._record_skill_usage_bg(loader, max_skills=5))
 
     def _publish_user_message(self, context: dict, message: str) -> None:
         """Publish a USER_MESSAGE event (non-blocking, never raises)."""
@@ -315,7 +323,7 @@ class HermesOSHook:
                 },
             )
             # Fire-and-forget: don't block the gateway
-            asyncio.create_task(self._event_bus.publish(event))
+            self._spawn(self._event_bus.publish(event))
         except Exception:
             logger.debug("Failed to publish USER_MESSAGE event")
 
@@ -329,11 +337,15 @@ class HermesOSHook:
 
         This is the Chief Agent integration: intent understanding → task planning.
         Runs non-blocking (fire-and-forget) so it doesn't slow down message routing.
+        Enforces a 30s timeout to prevent LLM blocking from stalling message processing.
         """
         try:
-            intent = await self._chief.parse_intent(
-                message=message,
-                user_id=user_id,
+            intent = await asyncio.wait_for(
+                self._chief.parse_intent(
+                    message=message,
+                    user_id=user_id,
+                ),
+                timeout=30.0,
             )
 
             if not await self._chief.should_auto_create_task(intent):
@@ -342,10 +354,13 @@ class HermesOSHook:
             # Get or create scheduler (uses lazy init + watcher)
             await self._ensure_scheduler()
 
-            tasks = await self._chief.create_task_dag(
-                intent=intent,
-                user_id=user_id,
-                scheduler=self._scheduler,
+            tasks = await asyncio.wait_for(
+                self._chief.create_task_dag(
+                    intent=intent,
+                    user_id=user_id,
+                    scheduler=self._scheduler,
+                ),
+                timeout=30.0,
             )
 
             if tasks:
@@ -367,8 +382,10 @@ class HermesOSHook:
                         "chief_confidence": intent.confidence,
                     },
                 )
-                asyncio.create_task(self._event_bus.publish(event))
+                self._spawn(self._event_bus.publish(event))
 
+        except asyncio.TimeoutError:
+            logger.warning("ChiefAgent intent processing timed out after 30s for user %s", user_id)
         except Exception:
             # Never let ChiefAgent errors block message processing
             logger.debug("ChiefAgent intent processing failed", exc_info=True)
@@ -479,7 +496,7 @@ class HermesOSHook:
                         type=EventType.USER_CONFIRMED,
                         payload={"user_id": user_id, "task_id": task_id},
                     )
-                    asyncio.create_task(self._event_bus.publish(event))
+                    self._spawn(self._event_bus.publish(event))
             elif action == "stop_task":
                 await self._scheduler.update_task_status(task_id, TaskStatus.FAILED, error="User intercepted task.")
                 logger.info("Jarvis: User triggered [Intercept] for task %s", task_id)
@@ -489,7 +506,7 @@ class HermesOSHook:
                         type=EventType.USER_INTERCEPTED,
                         payload={"user_id": user_id, "task_id": task_id},
                     )
-                    asyncio.create_task(self._event_bus.publish(event))
+                    self._spawn(self._event_bus.publish(event))
             elif action == "donate_to_global":
                 # User clicked "✅ 贡献" on governance donation card
                 content_path = data.get("content_path")
@@ -539,3 +556,13 @@ class HermesOSHook:
         if self._goal_tracker:
             await self._goal_tracker.close()
             self._goal_tracker = None
+
+        # Cancel all pending fire-and-forget tasks
+        self._cancel_pending()
+
+    def _cancel_pending(self) -> None:
+        """Cancel and clear all tracked pending tasks."""
+        for task in self._pending_tasks:
+            task.cancel()
+        self._pending_tasks.clear()
+        logger.debug("Cancelled %d pending tasks", len(self._pending_tasks))

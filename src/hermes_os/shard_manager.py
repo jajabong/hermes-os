@@ -124,14 +124,29 @@ class ShardedStorage:
     def __init__(self, shard_manager: ShardManager | None = None) -> None:
         self.shard_manager = shard_manager or ShardManager()
         self._connections: Dict[str, aiosqlite.Connection] = {}
+        # task_id → db_name (e.g. "alice") for O(1) shard lookup
+        self._task_shard_cache: Dict[str, str] = {}
+        # LRU access order for connection cache eviction
+        self._access_order: list[str] = []
+        # Maximum connections to keep in cache
+        self.MAX_CONNECTIONS = 50
 
     async def _get_db_for(self, user_id: str) -> aiosqlite.Connection:
         """Get or create a connection for the user's shard DB.
 
         Each user has their own DB file: ~/.hermes/users/{shard:03d}/{user_id}.db
         Connections are cached per user_id to avoid repeated open/close overhead.
+        LRU eviction kicks in when cache exceeds MAX_CONNECTIONS.
         """
         if user_id not in self._connections:
+            # Evict oldest entries if at capacity
+            while len(self._connections) >= self.MAX_CONNECTIONS:
+                oldest = self._access_order.pop(0)
+                if oldest in self._connections:
+                    conn = self._connections.pop(oldest)
+                    await conn.close()
+                    logger.debug("Evicted oldest connection for %s", oldest)
+
             db_path = self.shard_manager.db_path_for(user_id)
             db_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -141,6 +156,11 @@ class ShardedStorage:
             await self._lazy_initialize(conn, user_id)
             self._connections[user_id] = conn
             logger.debug("Opened shard DB at %s (user %s)", db_path, user_id)
+
+        # Update LRU order — move to end (most recently used)
+        if user_id in self._access_order:
+            self._access_order.remove(user_id)
+        self._access_order.append(user_id)
 
         return self._connections[user_id]
 
@@ -233,38 +253,44 @@ class ShardedStorage:
             task: A Task object with task_id, user_id, title, etc.
         """
         conn = await self._get_db_for(task.user_id)
-        await conn.execute(
-            """
-            INSERT INTO tasks
-            (task_id, user_id, title, description, status, priority,
-             depends_on, result, error, progress, created_at, updated_at,
-             started_at, completed_at, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                task.task_id,
-                task.user_id,
-                task.title,
-                task.description,
-                task.status.value if hasattr(task.status, "value") else task.status,
-                task.priority.value if hasattr(task.priority, "value") else task.priority,
-                ",".join(task.depends_on) if task.depends_on else "",
-                task.result or "",
-                task.error or "",
-                task.progress,
-                task.created_at.isoformat() if task.created_at else "",
-                task.updated_at.isoformat() if task.updated_at else "",
-                task.started_at.isoformat() if task.started_at else "",
-                task.completed_at.isoformat() if task.completed_at else "",
-                str(task.metadata or {}),
-            ),
-        )
-        await conn.commit()
+        # BEGIN IMMEDIATE acquires a write lock early to avoid SQLITE_BUSY
+        await conn.execute("BEGIN IMMEDIATE")
+        try:
+            await conn.execute(
+                """
+                INSERT INTO tasks
+                (task_id, user_id, title, description, status, priority,
+                 depends_on, result, error, progress, created_at, updated_at,
+                 started_at, completed_at, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    task.task_id,
+                    task.user_id,
+                    task.title,
+                    task.description,
+                    task.status.value if hasattr(task.status, "value") else task.status,
+                    task.priority.value if hasattr(task.priority, "value") else task.priority,
+                    ",".join(task.depends_on) if task.depends_on else "",
+                    task.result or "",
+                    task.error or "",
+                    task.progress,
+                    task.created_at.isoformat() if task.created_at else "",
+                    task.updated_at.isoformat() if task.updated_at else "",
+                    task.started_at.isoformat() if task.started_at else "",
+                    task.completed_at.isoformat() if task.completed_at else "",
+                    str(task.metadata or {}),
+                ),
+            )
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
 
     def _task_from_row(self, row: dict) -> "Task":
         """Reconstruct Task from a shard DB row dict."""
         from ast import literal_eval
-        from datetime import datetime
+        from datetime import datetime, UTC
 
         from hermes_os.task_scheduler import Task, TaskPriority, TaskStatus
 
@@ -299,25 +325,36 @@ class ShardedStorage:
             result=row.get("result") or None,
             error=row.get("error") or None,
             progress=row.get("progress", 0.0),
-            created_at=_parse_dt(row.get("created_at")) or datetime.now(_parse_utc()),
-            updated_at=_parse_dt(row.get("updated_at")) or datetime.now(_parse_utc()),
+            created_at=_parse_dt(row.get("created_at")) or datetime.now(UTC),
+            updated_at=_parse_dt(row.get("updated_at")) or datetime.now(UTC),
             started_at=_parse_dt(row.get("started_at")),
             completed_at=_parse_dt(row.get("completed_at")),
             metadata=metadata,
         )
 
-    def _parse_utc(self):
-        from datetime import UTC
-        return UTC
-
     async def get_task(self, task_id: str) -> "Task | None":
-        """Find a task by task_id across all shards (scans all shard DBs).
+        """Find a task by task_id. Uses cache for O(1) lookup after first access."""
+        # Fast path: cache hit
+        cached_db_name = self._task_shard_cache.get(task_id)
+        if cached_db_name:
+            conn = await self._get_db_for(cached_db_name)
+            async with conn.execute(
+                "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                if row:
+                    return self._task_from_row(dict(row))
+            # Cache miss cleanup
+            del self._task_shard_cache[task_id]
 
-        For frequently-accessed tasks, consider caching task_id→shard mapping.
-        """
-        if not self.BASE_PATH.exists():
+        # Slow path: scan all shards, populate cache on hit
+        return await self._scan_all_shards_for_task(task_id)
+
+    async def _scan_all_shards_for_task(self, task_id: str) -> "Task | None":
+        """Scan all shard DBs to find a task. Used on cache miss."""
+        if not self.shard_manager.BASE_PATH.exists():
             return None
-        for shard_dir in self.BASE_PATH.iterdir():
+        for shard_dir in self.shard_manager.BASE_PATH.iterdir():
             if not shard_dir.is_dir():
                 continue
             try:
@@ -333,6 +370,8 @@ class ShardedStorage:
                 ) as cur:
                     row = await cur.fetchone()
                     if row:
+                        # Populate cache for future lookups
+                        self._task_shard_cache[task_id] = db_file.stem
                         return self._task_from_row(dict(row))
         return None
 
@@ -357,9 +396,9 @@ class ShardedStorage:
     async def get_all_tasks(self) -> list["Task"]:
         """Get ALL tasks across all shard DBs."""
         all_tasks: list["Task"] = []
-        if not self.BASE_PATH.exists():
+        if not self.shard_manager.BASE_PATH.exists():
             return all_tasks
-        for shard_dir in self.BASE_PATH.iterdir():
+        for shard_dir in self.shard_manager.BASE_PATH.iterdir():
             if not shard_dir.is_dir():
                 continue
             try:
@@ -384,12 +423,56 @@ class ShardedStorage:
         error: str | None = None,
         progress: float | None = None,
     ) -> None:
-        """Update task status by task_id. Scans all shards to find the task."""
+        """Update task status by task_id. Uses cache for O(1) shard lookup."""
         from datetime import UTC, datetime
 
-        if not self.BASE_PATH.exists():
+        # Try cache first
+        cached_db_name = self._task_shard_cache.get(task_id)
+        if cached_db_name:
+            conn = await self._get_db_for(cached_db_name)
+            await conn.execute("BEGIN IMMEDIATE")
+            try:
+                async with conn.execute(
+                    "SELECT user_id FROM tasks WHERE task_id = ?", (task_id,)
+                ) as cur:
+                    row = await cur.fetchone()
+                if row:
+                    # Hit cache — update directly
+                    now = datetime.now(UTC).isoformat()
+                    fields = ["status = ?", "updated_at = ?"]
+                    values: list = [status, now]
+                    if result is not None:
+                        fields.append("result = ?")
+                        values.append(result)
+                    if error is not None:
+                        fields.append("error = ?")
+                        values.append(error)
+                    if progress is not None:
+                        fields.append("progress = ?")
+                        values.append(progress)
+                    if status == "running":
+                        fields.append("started_at = ?")
+                        values.append(now)
+                    if status in ("completed", "failed"):
+                        fields.append("completed_at = ?")
+                        values.append(now)
+                    values.append(task_id)
+                    await conn.execute(
+                        f"UPDATE tasks SET {', '.join(fields)} WHERE task_id = ?",
+                        values,
+                    )
+                    await conn.commit()
+                    return  # Done
+            except Exception:
+                await conn.rollback()
+                raise
+            finally:
+                del self._task_shard_cache[task_id]
+
+        # Slow path: scan all shards
+        if not self.shard_manager.BASE_PATH.exists():
             return
-        for shard_dir in self.BASE_PATH.iterdir():
+        for shard_dir in self.shard_manager.BASE_PATH.iterdir():
             if not shard_dir.is_dir():
                 continue
             try:
@@ -432,13 +515,17 @@ class ShardedStorage:
                     values,
                 )
                 await conn.commit()
+                # Cache the result for future lookups
+                self._task_shard_cache[task_id] = db_file.stem
                 return  # Done
 
     async def delete_task(self, task_id: str) -> bool:
         """Delete a task by task_id. Returns True if deleted."""
-        if not self.BASE_PATH.exists():
+        # Remove from cache if present
+        self._task_shard_cache.pop(task_id, None)
+        if not self.shard_manager.BASE_PATH.exists():
             return False
-        for shard_dir in self.BASE_PATH.iterdir():
+        for shard_dir in self.shard_manager.BASE_PATH.iterdir():
             if not shard_dir.is_dir():
                 continue
             try:
@@ -460,9 +547,9 @@ class ShardedStorage:
     async def get_runnable_tasks(self) -> list["Task"]:
         """Get all PENDING tasks whose dependencies are satisfied."""
         all_pending: list["Task"] = []
-        if not self.BASE_PATH.exists():
+        if not self.shard_manager.BASE_PATH.exists():
             return all_pending
-        for shard_dir in self.BASE_PATH.iterdir():
+        for shard_dir in self.shard_manager.BASE_PATH.iterdir():
             if not shard_dir.is_dir():
                 continue
             try:
@@ -502,6 +589,11 @@ class ShardedStorage:
             await conn.close()
             logger.debug("Closed shard DB for user %s", user_id)
         self._connections.clear()
+        self._access_order.clear()
+
+    def get_stats(self) -> dict:
+        """Return shard distribution statistics for monitoring."""
+        return self.shard_manager.get_stats()
 
     async def add_message(self, user_id: str, role: str, content: str) -> None:
         """Add a message and update last_message_at timestamp atomically."""
