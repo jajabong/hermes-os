@@ -33,6 +33,7 @@ class RoutedRequest:
     user: User
     enriched_message: str
     session_id: str
+    model_tier: str = "blend"  # Selected model tier: minimax, blend, or baosi
 
 
 class UserRouter:

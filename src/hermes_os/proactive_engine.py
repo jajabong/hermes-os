@@ -219,6 +219,11 @@ class ProactiveEngine:
         loop.register_handler(EventType.CRON_TICK, self.on_cron_tick)
         loop.register_handler(EventType.TASK_COMPLETED, self.on_task_completed)
         loop.register_handler(EventType.TASK_FAILED, self.on_task_failed)
+        # GitHub event handlers
+        loop.register_handler(EventType.PULL_REQUEST_OPENED, self.on_github_pr_opened)
+        loop.register_handler(EventType.PULL_REQUEST_MERGED, self.on_github_pr_merged)
+        loop.register_handler(EventType.ISSUE_OPENED, self.on_github_issue_opened)
+        loop.register_handler(EventType.PUSH, self.on_github_push)
         logger.info("ProactiveEngine registered with event loop")
 
     # -------------------------------------------------------------------------
@@ -857,8 +862,134 @@ class ProactiveEngine:
             logger.exception("Task failed handler error")
 
     # -------------------------------------------------------------------------
-    # Helper methods
+    # GitHub event handlers — autonomous reaction to code events
     # -------------------------------------------------------------------------
+
+    async def on_github_pr_opened(self, event: Event) -> None:
+        """PR opened → auto-create code review task."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            pr_number = event.payload.get("pr_number", "?")
+            pr_title = event.payload.get("title", "PR review")
+            user_id = event.payload.get("user_id", "")
+            author = event.payload.get("author", "unknown")
+
+            logger.info("GitHub PR opened: #%d %s by %s", pr_number, pr_title, author)
+
+            task_title = f"Review PR #{pr_number}: {pr_title}"
+            await self._scheduler.create_macro_task(
+                user_id=user_id,
+                title=task_title,
+                subtasks=[{
+                    "title": f"Review PR #{pr_number}",
+                    "description": (
+                        f"Review pull request in {repo}\n\n"
+                        f"Title: {pr_title}\n"
+                        f"Author: {author}\n\n"
+                        "Check: code quality, tests, security, merge readiness."
+                    ),
+                }],
+                metadata={
+                    "intent_action": "review",
+                    "role": "reviewer",
+                    "github_repo": repo,
+                    "github_pr": pr_number,
+                    "skip_confirmation": True,
+                },
+            )
+
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"📣 New PR in {repo}: #{pr_number} {pr_title}\nAuto-review task created.",
+            )
+        except Exception:
+            logger.exception("GitHub PR opened handler error")
+
+    async def on_github_pr_merged(self, event: Event) -> None:
+        """PR merged → trigger deploy consideration."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            pr_number = event.payload.get("pr_number", "?")
+            branch = event.payload.get("branch", "main")
+            user_id = event.payload.get("user_id", "")
+
+            logger.info("GitHub PR merged: #%d to %s", pr_number, branch)
+
+            # Notify relevant users that a deploy might be needed
+            if branch in ("main", "master", "release"):
+                await self._enqueue_notification(
+                    user_id=user_id,
+                    message=(
+                        f"✅ PR #{pr_number} merged to {branch} in {repo}\n"
+                        f"Consider: trigger deployment pipeline?"
+                    ),
+                )
+        except Exception:
+            logger.exception("GitHub PR merged handler error")
+
+    async def on_github_issue_opened(self, event: Event) -> None:
+        """Issue opened → create investigation task."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            issue_number = event.payload.get("issue_number", "?")
+            issue_title = event.payload.get("title", "Bug investigation")
+            user_id = event.payload.get("user_id", "")
+            labels = event.payload.get("labels", [])
+
+            logger.info("GitHub issue opened: #%d %s", issue_number, issue_title)
+
+            # Determine intent based on labels
+            intent = "research"
+            if any(l in labels for l in ["bug", "fix", "urgent"]):
+                intent = "code"
+                task_title = f"Fix issue #{issue_number}: {issue_title}"
+            else:
+                task_title = f"Investigate issue #{issue_number}: {issue_title}"
+
+            await self._scheduler.create_macro_task(
+                user_id=user_id,
+                title=task_title,
+                subtasks=[{
+                    "title": f"Investigate issue #{issue_number}",
+                    "description": f"Repo: {repo}\nTitle: {issue_title}\nLabels: {labels}",
+                }],
+                metadata={
+                    "intent_action": intent,
+                    "role": "executor" if intent == "code" else "researcher",
+                    "github_repo": repo,
+                    "github_issue": issue_number,
+                    "skip_confirmation": True,
+                },
+            )
+        except Exception:
+            logger.exception("GitHub issue opened handler error")
+
+    async def on_github_push(self, event: Event) -> None:
+        """Push to branch → notify relevant users."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            branch = event.payload.get("branch", "unknown")
+            commits = event.payload.get("commits_count", 0)
+            user_id = event.payload.get("user_id", "")
+
+            logger.info("GitHub push to %s/%s: %d commits", repo, branch, commits)
+
+            # Only notify on main/release branches
+            if branch in ("main", "master") and commits > 0:
+                await self._enqueue_notification(
+                    user_id=user_id,
+                    message=f"🚀 {commits} commit(s) pushed to {branch} in {repo}",
+                )
+        except Exception:
+            logger.exception("GitHub push handler error")
 
     async def _get_task_stats(self) -> dict:
         """Get a quick snapshot of task counts by status."""

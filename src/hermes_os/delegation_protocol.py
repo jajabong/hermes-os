@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from hermes_os.intent_constants import INTENT_AGENT_MAP
+
 if TYPE_CHECKING:
     from hermes_os.feishu_enhancer import FeishuEnhancer
     from hermes_os.jarvis_interface import JarvisInterface
@@ -70,28 +72,9 @@ class DelegationResult:
 
 
 # ---------------------------------------------------------------------------
-# Intent → Agent mapping
-# ---------------------------------------------------------------------------
-
-INTENT_TO_AGENT: dict[str, str] = {
-    "code": "CodeAgent",
-    "fix_bug": "CodeAgent",
-    "investment": "InvestmentAgent",
-    "legal": "LegalAgent",
-    "content": "ContentAgent",
-    "research": "ResearchAgent",
-    "education": "EducationAgent",
-    "deploy": "DeployAgent",
-    "review": "ReviewAgent",
-    "test": "TestAgent",
-    "write_book": "BookPipelineAgent",
-    "unknown": "ChiefAgent",
-}
-
-
-# ---------------------------------------------------------------------------
 # DelegationTrigger — 任务复杂度判断
 # ---------------------------------------------------------------------------
+# INTENT_AGENT_MAP from unified_router.py (single source of truth, imported at top)
 
 
 class DelegationTrigger:
@@ -322,7 +305,7 @@ class DelegationProtocol:
         immediate_reply = self._build_immediate_reply(user_name, intent, message)
 
         # 确定 agent 名称
-        agent_name = INTENT_TO_AGENT.get(intent, "ChiefAgent")
+        agent_name = INTENT_AGENT_MAP.get(intent, "ChiefAgent")
 
         # 构建 metadata（含 notify_target 用于飞书推送）
         metadata: dict[str, Any] = {

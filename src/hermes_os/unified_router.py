@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from hermes_os.delegation_protocol import DelegationProtocol
 from hermes_os.intent_clarifier import IntentClarifier
 from hermes_os.memory_hub import MemoryHub
+from hermes_os.model_selector import ModelSelector, ModelTier
 from hermes_os.persona_assembler import PersonaAssembler
 from hermes_os.router import GatewayEvent
 from hermes_os.topic_tracker import TopicContext
@@ -36,25 +37,10 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Intent → Agent mapping
+# Intent → Agent mapping (single source of truth in intent_constants.py)
 # ---------------------------------------------------------------------------
 
-INTENT_AGENT_MAP: dict[str, str] = {
-    # Vertical agents
-    "code": "CodeAgent",
-    "fix_bug": "CodeAgent",
-    "research": "ResearchAgent",
-    "investment": "InvestmentAgent",
-    "legal": "LegalAgent",
-    "content": "ContentAgent",
-    "education": "EducationAgent",
-    "deploy": "DeployAgent",
-    "review": "ReviewAgent",
-    "test": "TestAgent",
-    "write_book": "BookPipelineAgent",
-    # Default fallback
-    "unknown": "ChiefAgent",
-}
+from hermes_os.intent_constants import INTENT_AGENT_MAP
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +58,8 @@ class RouteResult:
     message: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
     continuation_context: TopicContext | None = None  # set when user said "接着上次"
+    model_tier: str = "blend"  # Selected model tier: minimax, blend, or baosi
+    model_complexity_reason: str = ""  # Why this tier was selected
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +85,7 @@ class UnifiedRouter:
     """
 
     INTENT_PATTERNS: dict[str, list[str]] = {
+        # Order matters: more specific intents first
         "investment": [
             "投资",
             "理财",
@@ -118,6 +107,17 @@ class UnifiedRouter:
             "法规",
             "法律咨询",
         ],
+        # review BEFORE code because "代码审查" is more specific than "代码"
+        "review": [
+            "代码审查",
+            "审查代码",
+            "审查",
+            "review",
+            "评审",
+            "检查",
+            "看代码",
+            "架构评审",
+        ],
         "code": [
             "代码",
             "编程",
@@ -131,7 +131,6 @@ class UnifiedRouter:
             "fastapi",
             "python",
             "接口",
-            "函数",
             "class ",
             "def ",
             "async def",
@@ -172,6 +171,44 @@ class UnifiedRouter:
             "老师",
             "作业",
             "升学",
+        ],
+        "deploy": [
+            "部署",
+            "deploy",
+            "k8s",
+            "kubernetes",
+            "docker",
+            "ci/cd",
+            "流水线",
+            "环境配置",
+            "发布",
+        ],
+        "review": [
+            "代码审查",
+            "审查代码",
+            "审查",
+            "review",
+            "评审",
+            "检查",
+            "看代码",
+            "架构评审",
+        ],
+        "test": [
+            "测试",
+            "test",
+            "单元测试",
+            "集成测试",
+            "e2e",
+            "测试策略",
+            "自动化测试",
+        ],
+        "write_book": [
+            "写书",
+            "写一本",
+            "写本",
+            "出书",
+            "写小说",
+            "写技术书",
         ],
     }
 
@@ -286,6 +323,8 @@ class UnifiedRouter:
                         else None,
                         "suggestions": clarification_result.suggestions,
                     },
+                    model_tier=routing_decision.tier.value,
+                    model_complexity_reason=routing_decision.complexity_reason,
                 )
 
         # Phase 4: Parse intent
@@ -302,6 +341,17 @@ class UnifiedRouter:
                 )
             except Exception as e:
                 logger.warning("[UnifiedRouter] ChiefAgent.parse_intent failed: %s", e)
+
+        # Phase 4b: Model selection (keyword + LLM hybrid)
+        # Determines which model tier to use: MiniMax (cheap) vs blend (heavy)
+        model_selector = ModelSelector()
+        routing_decision = await model_selector.select_model(event.message)
+        logger.info(
+            "[UnifiedRouter] Model tier: %s (%s, llm_eval=%s)",
+            routing_decision.tier.value,
+            routing_decision.complexity_reason,
+            routing_decision.needs_llm_eval,
+        )
 
         # Phase 5: Match and invoke agent
         agent_name = self.match_agent(intent)
@@ -335,12 +385,16 @@ class UnifiedRouter:
                             "session_id": session.session_id if session else "",
                             "task_id": delegation_result.task_id,
                         },
+                        model_tier=routing_decision.tier.value,
+                        model_complexity_reason=routing_decision.complexity_reason,
                     )
                 # If delegation returned NOT_DELAGATED (MEDIUM complexity), continue to agent
 
         result_message = ""
         try:
             agent = self._agent_registry.get_agent(agent_name)
+            # Get fallback chain for this model tier
+            fallback_chain = model_selector.get_fallback_chain(routing_decision.tier)
             request = AgentRequest(
                 intent=intent,
                 params={"message": event.message},
@@ -349,6 +403,11 @@ class UnifiedRouter:
                     "session_id": session.session_id if session else "",
                     "memory_context": ctx,
                     "persona_block": persona_block,
+                    # Model routing
+                    "model_tier": routing_decision.tier.value,
+                    "model_complexity_reason": routing_decision.complexity_reason,
+                    "model_needs_llm_eval": routing_decision.needs_llm_eval,
+                    "model_fallback_chain": [t.value for t in fallback_chain],
                 },
             )
             agent_result = await agent.invoke(request, {"hub": hub, "user": user})
@@ -401,4 +460,6 @@ class UnifiedRouter:
                 "user": user,
                 "session_id": session.session_id if session else "",
             },
+            model_tier=routing_decision.tier.value,
+            model_complexity_reason=routing_decision.complexity_reason,
         )

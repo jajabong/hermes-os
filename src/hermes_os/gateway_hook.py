@@ -302,6 +302,7 @@ class HermesOSHook:
         gateway_event_obj.text = routed.enriched_message
         context["hermes_os_user_id"] = routed.user.user_id
         context["hermes_os_session_id"] = routed.session_id
+        context["model_tier"] = routed.model_tier
 
         # Update last_message_at in shard DB for silence detection (non-blocking)
         self._spawn(self._update_last_message_at_bg(routed.user.user_id, raw_message))

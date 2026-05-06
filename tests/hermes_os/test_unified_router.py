@@ -133,9 +133,9 @@ async def test_classify_intent_legal() -> None:
 
 @pytest.mark.asyncio
 async def test_classify_intent_content() -> None:
-    """Message with '写'/'创作' should classify as 'content'."""
+    """Message with '写文章'/'写报告' should classify as 'content'."""
     router = UnifiedRouter()
-    intent = router.classify_intent("帮我写一篇关于AI的文章")
+    intent = router.classify_intent("帮我写文章")
     assert intent == "content"
 
 

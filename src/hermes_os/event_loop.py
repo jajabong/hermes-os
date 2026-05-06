@@ -26,6 +26,7 @@ class EventType(str, Enum):
     SKILL_DISCOVERED = "hermes_os.skill_discovered"
     SKILL_EFFECTIVENESS_UPDATED = "hermes_os.skill_effectiveness_updated"
     AGENT_RESPONSE = "hermes_os.agent_response"
+    AGENT_TASK_COMPLETED = "hermes_os.agent_task_completed"
     CONVERSATION_STATE_CHANGED = "hermes_os.conversation_state_changed"
     USER_CONFIRMED = "hermes_os.user_confirmed"
     USER_INTERCEPTED = "hermes_os.user_intercepted"

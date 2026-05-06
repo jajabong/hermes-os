@@ -74,6 +74,7 @@ class HermesOSRouter:
             user=route_result.metadata.get("user"),
             enriched_message=route_result.message,
             session_id=route_result.metadata.get("session_id", ""),
+            model_tier=route_result.model_tier,
         )
 
     async def close(self) -> None:
