@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from hermes_os.agents.registry_initializer import initialize_agents
 from hermes_os.delegation_protocol import DelegationProtocol
 from hermes_os.knowledge_cli import KnowledgeCLI
 from hermes_os.router import GatewayEvent, RoutedRequest, UserRouter
 from hermes_os.topic_tracker import TopicTracker
 from hermes_os.unified_router import UnifiedRouter, RouteResult
+
+initialize_agents()
 
 _USER_BRAIN_BASE = Path.home() / ".hermes" / "users"
 

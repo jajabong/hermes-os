@@ -221,7 +221,12 @@ class RecentContextMemory:
         if self._router is None:
             return
         try:
-            await self._router.store(content, metadata=metadata or {})
+            class _DummyUser:
+                user_id: str
+
+            dummy_user = _DummyUser()
+            dummy_user.user_id = self._user_id
+            await self._router.store(dummy_user, content, metadata=metadata or {})
         except Exception as e:
             logger.warning("[RecentContextMemory] store failed: %s", e)
 

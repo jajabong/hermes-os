@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -37,12 +37,14 @@ async def test_skip_confirmation_bypasses_send_card(scheduler: TaskScheduler) ->
     mock_jarvis = AsyncMock()
     scheduler._jarvis = mock_jarvis
 
-    # Process pending tasks — should skip confirmation and go straight to invoke
-    # Since invoke requires claude code CLI, it will raise — but send_card should not be called
-    try:
-        await scheduler._process_pending_tasks()
-    except Exception:
-        pass
+    # Patch invoke so _process_pending_tasks doesn't try to run real Claude Code CLI
+    mock_result = AsyncMock()
+    mock_result.stdout = ""
+    with patch("hermes_os.task_scheduler.invoke", return_value=mock_result):
+        try:
+            await scheduler._process_pending_tasks()
+        except Exception:
+            pass
 
     # send_card_with_nl should NOT have been called
     assert mock_jarvis.send_card_with_nl.call_count == 0
@@ -131,11 +133,16 @@ async def test_await_confirmation_times_out_without_events(scheduler: TaskSchedu
 
 @pytest.mark.asyncio
 async def test_dag_task_auto_executes_without_user_confirmation(scheduler: TaskScheduler) -> None:
-    """A DAG subtask with skip_confirmation=True executes without user interaction."""
+    """A DAG subtask with skip_confirmation=True executes without user interaction.
+
+    Intention: skip_confirmation tasks bypass the interactive intent card.
+    Note: DAG completion notifications (_send_notification) are separate and
+    still fire for steps with notify_target configured.
+    """
     mock_jarvis = AsyncMock()
     scheduler._jarvis = mock_jarvis
 
-    # Create DAG parent
+    # Create DAG parent (no notify_target — not relevant to this test)
     parent = await scheduler.create_task(
         user_id="alice",
         title="Research → Implement → Deploy",
@@ -149,7 +156,7 @@ async def test_dag_task_auto_executes_without_user_confirmation(scheduler: TaskS
         },
     )
 
-    # Create 2 subtasks (both auto-execute)
+    # Create 2 subtasks (both auto-execute, no notify_target so no completion notifications)
     step1 = await scheduler.create_task(
         user_id="alice",
         title="Research",
@@ -158,7 +165,6 @@ async def test_dag_task_auto_executes_without_user_confirmation(scheduler: TaskS
             "dag_id": "dag-auto-001",
             "dag_step": "1",
             "skip_confirmation": True,
-            "notify_target": {"type": "feishu", "open_id": "alice_oid"},
         },
     )
 
@@ -171,17 +177,26 @@ async def test_dag_task_auto_executes_without_user_confirmation(scheduler: TaskS
             "dag_step": "2",
             "skip_confirmation": True,
             "depends_on": [step1.task_id],
-            "notify_target": {"type": "feishu", "open_id": "alice_oid"},
         },
     )
 
-    # Process pending tasks
-    try:
-        await scheduler._process_pending_tasks()
-    except Exception:
-        pass
+    # Mock notification_manager to prevent real jarvis calls during running_update
+    mock_nm = AsyncMock()
+    scheduler._notification_manager = mock_nm
 
-    # Cards should not be sent for skip_confirmation tasks
+    # Process pending tasks — mock invoke to prevent real CLI calls
+    mock_result = AsyncMock()
+    mock_result.stdout = "done"
+    mock_result.ok = True
+    with patch("hermes_os.task_scheduler.invoke", return_value=mock_result):
+        with patch.object(scheduler._skill_discovery, "detect_gap", new_callable=AsyncMock):
+            try:
+                await scheduler._process_pending_tasks()
+            except Exception:
+                pass
+
+    # No intent card should be sent for skip_confirmation tasks
+    # (running updates are mocked above, completion notifications only fire for notify_target)
     assert mock_jarvis.send_card_with_nl.call_count == 0
 
     # DAG progress should have been updated
@@ -205,12 +220,14 @@ async def test_non_auto_task_requires_confirmation(scheduler: TaskScheduler) -> 
     mock_jarvis = AsyncMock()
     scheduler._jarvis = mock_jarvis
 
-    # Since confirmation will timeout (no USER_CONFIRMED event), task won't execute
-    # But intent card SHOULD have been sent
-    try:
-        await scheduler._process_pending_tasks()
-    except Exception:
-        pass
+    # Mock invoke — task won't execute anyway (confirmation times out)
+    mock_result = AsyncMock()
+    mock_result.stdout = ""
+    with patch("hermes_os.task_scheduler.invoke", return_value=mock_result):
+        try:
+            await scheduler._process_pending_tasks()
+        except Exception:
+            pass
 
     # Intent card should have been sent
     assert mock_jarvis.send_card_with_nl.call_count >= 1
@@ -243,8 +260,6 @@ async def test_retry_task_persists_retry_count(scheduler: TaskScheduler) -> None
 @pytest.mark.asyncio
 async def test_process_pending_tasks_persists_retry_count_on_failure(tmp_path: Path) -> None:
     """Auto-retry in _process_pending_tasks should persist retry_count after each failure."""
-    from unittest.mock import AsyncMock, patch
-
     from hermes_os.claude_code_invocator import InvocationError
 
     scheduler = TaskScheduler(db_path=str(tmp_path / "retry.db"))

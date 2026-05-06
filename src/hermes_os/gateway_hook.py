@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -303,6 +304,7 @@ class HermesOSHook:
         context["hermes_os_user_id"] = routed.user.user_id
         context["hermes_os_session_id"] = routed.session_id
         context["model_tier"] = routed.model_tier
+        os.environ["HERMES_OS_MODEL_TIER"] = routed.model_tier
 
         # Update last_message_at in shard DB for silence detection (non-blocking)
         self._spawn(self._update_last_message_at_bg(routed.user.user_id, raw_message))

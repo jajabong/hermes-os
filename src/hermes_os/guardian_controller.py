@@ -423,13 +423,15 @@ class GuardianController:
         try:
             cp = await self.load_checkpoint(task_id)
             if cp is None:
-                # No checkpoint — create one with error
+                # No checkpoint — create one with error and persist immediately
+                # so increment_retry can find it on next load
                 cp = CheckpointData(
                     task_id=task_id,
                     stage="unknown",
                     status="in_progress",
                     error_context=error_message,
                 )
+                await self.save_checkpoint(cp)
 
             # Update error context
             cp.error_context = error_message
