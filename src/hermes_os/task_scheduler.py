@@ -31,6 +31,7 @@ from hermes_os.claude_code_invocator import (
 from hermes_os.conversation_state import ConversationStateManager
 from hermes_os.event_loop import Event, EventType, get_event_bus
 from hermes_os.jarvis_interface import JarvisInterface
+from hermes_os.notification_manager import NotificationManager
 from hermes_os.org_context import build_team_context
 from hermes_os.org_memory import OrgMemory
 from hermes_os.skill_discovery import CapabilityGap, SkillDiscovery
@@ -57,6 +58,103 @@ class TaskPriority(str, Enum):
     NORMAL = "normal"
     HIGH = "high"
     CRITICAL = "critical"
+
+
+@dataclass
+class IntentLinkData:
+    """Step-level intent tracking for "继续" continuity.
+
+    Tracks which DAG subtask the user should resume when they say "继续".
+    Replaces the粗糙的 LAST_TOPIC.md approach with step-level precision.
+    """
+
+    user_id: str
+    topic: str
+    intent_type: str
+    dag_id: str
+    dag_parent_task_id: str
+    current_step: int = 1
+    total_steps: int = 1
+    completed_steps: int = 0
+    pending_step_ids: list[str] = field(default_factory=list)
+    last_error: str = ""
+    error_category: str = "unknown"
+    retry_count: int = 0
+    resumption_count: int = 0
+    is_active: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "user_id": self.user_id,
+            "topic": self.topic,
+            "intent_type": self.intent_type,
+            "dag_id": self.dag_id,
+            "dag_parent_task_id": self.dag_parent_task_id,
+            "current_step": self.current_step,
+            "total_steps": self.total_steps,
+            "completed_steps": self.completed_steps,
+            "pending_step_ids": ",".join(self.pending_step_ids),
+            "last_error": self.last_error,
+            "error_category": self.error_category,
+            "retry_count": self.retry_count,
+            "resumption_count": self.resumption_count,
+            "is_active": 1 if self.is_active else 0,
+        }
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> IntentLinkData:
+        pending_str = row.get("pending_step_ids", "")
+        return cls(
+            user_id=row["user_id"],
+            topic=row["topic"],
+            intent_type=row.get("intent_type", "unknown"),
+            dag_id=row["dag_id"],
+            dag_parent_task_id=row["dag_parent_task_id"],
+            current_step=row.get("current_step", 1),
+            total_steps=row.get("total_steps", 1),
+            completed_steps=row.get("completed_steps", 0),
+            pending_step_ids=[p for p in pending_str.split(",") if p],
+            last_error=row.get("last_error", ""),
+            error_category=row.get("error_category", "unknown"),
+            retry_count=row.get("retry_count", 0),
+            resumption_count=row.get("resumption_count", 0),
+            is_active=bool(row.get("is_active", 1)),
+        )
+
+
+@dataclass
+class ContinuationContext:
+    """Enriched context returned when user says "继续" — step-level detail for LLM."""
+
+    dag_id: str
+    topic: str
+    intent_type: str
+    current_step: int
+    step_title: str
+    completed_steps: int
+    total_steps: int
+    completion_pct: int
+    pending_step_ids: list[str]
+    last_error: str
+    error_category: str
+    retry_count: int
+    resumption_count: int
+
+
+def _classify_error(error_msg: str) -> str:
+    """Classify an error message into a category for adaptive retry."""
+    msg = error_msg.lower()
+    if any(p in msg for p in ("rate limit", "quota", "too many requests")):
+        return "rate_limit"
+    if any(p in msg for p in ("timeout", "timed out", "exceeded")):
+        return "timeout"
+    if any(p in msg for p in ("auth", "token", "invalid", "unauthorized", "permission")):
+        return "auth"
+    if any(p in msg for p in ("skill", "not found", "missing", "capability")):
+        return "skill"
+    if any(p in msg for p in ("syntax", "typeerror", "valueerror", "attributeerror", "invalid json")):
+        return "logical"
+    return "unknown"
 
 
 @dataclass
@@ -163,12 +261,19 @@ class TaskScheduler:
         self._conv_state = conversation_state_manager
         self._jarvis: JarvisInterface | None = None
         self._event_bus = get_event_bus()
+        self._notification_manager: NotificationManager | None = None
 
     @property
     def jarvis(self) -> JarvisInterface:
         if self._jarvis is None:
             self._jarvis = JarvisInterface()
         return self._jarvis
+
+    @property
+    def notification_manager(self) -> NotificationManager:
+        if self._notification_manager is None:
+            self._notification_manager = NotificationManager(jarvis=self.jarvis)
+        return self._notification_manager
 
     async def _get_db(self) -> aiosqlite.Connection:
         if self._db is None:
@@ -206,6 +311,26 @@ class TaskScheduler:
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+
+        # IntentLink table for step-level "继续" tracking
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS intent_links (
+                user_id TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                intent_type TEXT DEFAULT 'unknown',
+                dag_id TEXT PRIMARY KEY,
+                dag_parent_task_id TEXT NOT NULL,
+                current_step INTEGER DEFAULT 1,
+                total_steps INTEGER DEFAULT 1,
+                completed_steps INTEGER DEFAULT 0,
+                pending_step_ids TEXT DEFAULT '',
+                last_error TEXT DEFAULT '',
+                error_category TEXT DEFAULT 'unknown',
+                retry_count INTEGER DEFAULT 0,
+                resumption_count INTEGER DEFAULT 0,
+                is_active INTEGER DEFAULT 1
+            )
+        """)
         await db.commit()
 
     # -------------------------------------------------------------------------
@@ -286,6 +411,143 @@ class TaskScheduler:
         """Get a single task by task_id."""
         return await self.get_task(task_id)
 
+    # -------------------------------------------------------------------------
+    # IntentLink CRUD
+    # -------------------------------------------------------------------------
+
+    async def create_intent_link(
+        self,
+        user_id: str,
+        topic: str,
+        intent_type: str,
+        dag_id: str,
+        dag_parent_task_id: str,
+        total_steps: int,
+    ) -> IntentLinkData:
+        """Create an IntentLink record when a new DAG is created."""
+        await self._lazy_init()
+        link = IntentLinkData(
+            user_id=user_id,
+            topic=topic,
+            intent_type=intent_type,
+            dag_id=dag_id,
+            dag_parent_task_id=dag_parent_task_id,
+            total_steps=total_steps,
+        )
+        async with self._lock:
+            db = await self._get_db()
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO intent_links
+                (user_id, topic, intent_type, dag_id, dag_parent_task_id,
+                 current_step, total_steps, completed_steps, pending_step_ids,
+                 last_error, error_category, retry_count, resumption_count, is_active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    link.user_id, link.topic, link.intent_type,
+                    link.dag_id, link.dag_parent_task_id,
+                    link.current_step, link.total_steps, link.completed_steps,
+                    ",".join(link.pending_step_ids),
+                    link.last_error, link.error_category,
+                    link.retry_count, link.resumption_count,
+                    1 if link.is_active else 0,
+                ),
+            )
+            await db.commit()
+        return link
+
+    async def get_intent_link_by_dag(self, dag_id: str) -> IntentLinkData | None:
+        """Load IntentLink by dag_id."""
+        await self._lazy_init()
+        db = await self._get_db()
+        async with db.execute("SELECT * FROM intent_links WHERE dag_id = ?", (dag_id,)) as cursor:
+            row = await cursor.fetchone()
+            return IntentLinkData.from_row(dict(row)) if row else None
+
+    async def get_active_intent_link(self, user_id: str) -> IntentLinkData | None:
+        """Get the active (incomplete) IntentLink for a user."""
+        await self._lazy_init()
+        db = await self._get_db()
+        async with db.execute(
+            "SELECT * FROM intent_links WHERE user_id = ? AND is_active = 1 LIMIT 1",
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return IntentLinkData.from_row(dict(row)) if row else None
+
+    async def update_intent_link(self, link: IntentLinkData) -> None:
+        """Persist updated IntentLinkData to DB."""
+        await self._lazy_init()
+        async with self._lock:
+            db = await self._get_db()
+            await db.execute(
+                """
+                UPDATE intent_links SET
+                    current_step = ?, total_steps = ?, completed_steps = ?,
+                    pending_step_ids = ?, last_error = ?, error_category = ?,
+                    retry_count = ?, resumption_count = ?, is_active = ?
+                WHERE dag_id = ?
+                """,
+                (
+                    link.current_step, link.total_steps, link.completed_steps,
+                    ",".join(link.pending_step_ids),
+                    link.last_error, link.error_category,
+                    link.retry_count, link.resumption_count,
+                    1 if link.is_active else 0,
+                    link.dag_id,
+                ),
+            )
+            await db.commit()
+
+    async def record_resumption(self, dag_id: str) -> None:
+        """Increment resumption_count when user says "继续"."""
+        await self._lazy_init()
+        async with self._lock:
+            db = await self._get_db()
+            await db.execute(
+                "UPDATE intent_links SET resumption_count = resumption_count + 1 WHERE dag_id = ?",
+                (dag_id,),
+            )
+            await db.commit()
+
+    async def get_continuation_context(self, dag_id: str) -> ContinuationContext | None:
+        """Build step-level ContinuationContext for LLM when user says "继续"."""
+        link = await self.get_intent_link_by_dag(dag_id)
+        if not link:
+            return None
+
+        # Get current step task
+        db = await self._get_db()
+        pending_ids = link.pending_step_ids
+
+        # Find the task for current_step (current_step is NEXT step to execute)
+        step_title = f"Step {link.current_step}"
+        if pending_ids:
+            # pending_ids[0] is always the current/next step
+            current_task_id = pending_ids[0]
+            task = await self.get_task(current_task_id)
+            if task:
+                step_title = task.title
+
+        pct = int(link.completed_steps / link.total_steps * 100) if link.total_steps > 0 else 0
+
+        return ContinuationContext(
+            dag_id=link.dag_id,
+            topic=link.topic,
+            intent_type=link.intent_type,
+            current_step=link.current_step,
+            step_title=step_title,
+            completed_steps=link.completed_steps,
+            total_steps=link.total_steps,
+            completion_pct=pct,
+            pending_step_ids=link.pending_step_ids,
+            last_error=link.last_error if link.last_error else None,
+            error_category=link.error_category if link.error_category != "unknown" else None,
+            retry_count=link.retry_count,
+            resumption_count=link.resumption_count,
+        )
+
     async def update_task_status(
         self,
         task_id: str,
@@ -326,6 +588,25 @@ class TaskScheduler:
         # After status change, update DAG progress and notify if needed
         if status == TaskStatus.COMPLETED:
             await self._on_task_completed(task_id)
+        elif status == TaskStatus.FAILED:
+            await self._on_task_failed(task_id, error)
+
+        # Publish TASK_COMPLETED/TASK_FAILED events for ProactiveEngine
+        task = await self.get_task(task_id)
+        if task:
+            event_type = EventType.TASK_COMPLETED if status == TaskStatus.COMPLETED else EventType.TASK_FAILED
+            await self._event_bus.publish(Event(
+                type=event_type,
+                payload={
+                    "task_id": task_id,
+                    "user_id": task.user_id,
+                    "status": status.value,
+                    "result": result,
+                    "error": error,
+                    "title": task.title,
+                    "metadata": task.metadata,
+                },
+            ))
 
     async def _on_task_completed(self, task_id: str) -> None:
         """Handle task completion: update DAG parent progress, notify user, clear TopicTracker."""
@@ -345,12 +626,49 @@ class TaskScheduler:
         if dag_parent:
             await self._send_dag_progress_notification(dag_parent, task)
 
+        # Update IntentLink: advance current_step
+        link = await self.get_intent_link_by_dag(dag_id)
+        if link:
+            dag_step = task.metadata.get("dag_step", 0)
+            new_completed = link.completed_steps + 1
+            new_current = link.current_step + 1
+
+            # Check if all steps are done
+            if new_completed >= link.total_steps:
+                link.completed_steps = new_completed
+                link.is_active = False
+            else:
+                link.completed_steps = new_completed
+                link.current_step = new_current
+                # Advance pending_step_ids (remove first)
+                if link.pending_step_ids:
+                    link.pending_step_ids = link.pending_step_ids[1:]
+
+            await self.update_intent_link(link)
+
         # Clear TopicTracker entry for this task so "继续上次" doesn't reference a finished task
         try:
             tracker = TopicTracker(user_id=task.user_id)
             await tracker.complete_topic(task_id)
         except Exception:
             logger.debug("Failed to complete topic for task %s", task_id)
+
+    async def _on_task_failed(self, task_id: str, error: str | None) -> None:
+        """Handle task failure: update IntentLink error context and retry count."""
+        task = await self.get_task(task_id)
+        if not task:
+            return
+
+        dag_id = task.metadata.get("dag_id")
+        if not dag_id:
+            return
+
+        link = await self.get_intent_link_by_dag(dag_id)
+        if link:
+            link.last_error = error or ""
+            link.error_category = _classify_error(error or "")
+            link.retry_count += 1
+            await self.update_intent_link(link)
 
     async def _update_dag_progress(self, dag_id: str) -> None:
         """Update DAG parent completion count based on completed children."""
@@ -713,6 +1031,23 @@ class TaskScheduler:
                 continue
 
             logger.info("Jarvis: Task %s confirmed by user, executing", task.task_id)
+
+            # Stage-by-stage push: notify when a DAG subtask starts
+            dag_id = task.metadata.get("dag_id")
+            if dag_id:
+                try:
+                    link = await self.get_intent_link_by_dag(dag_id)
+                    step_label = f"Step {link.current_step}: {task.title}" if link else task.title
+                    goal_ctx = f"{link.topic} ({link.intent_type})" if link else None
+                    await self.notification_manager.send_running_update(
+                        user_id=task.user_id,
+                        task_title=task.title,
+                        task_id=task.task_id,
+                        step=step_label,
+                        goal_context=goal_ctx,
+                    )
+                except Exception:
+                    logger.debug("Failed to send running update for task %s", task.task_id)
 
             try:
                 # Extract execution parameters from metadata
@@ -1094,6 +1429,34 @@ class TaskScheduler:
             )
             created.append(task)
             prev_ids.append(task.task_id)
+
+        # Create IntentLink for step-level "继续" tracking
+        if created:
+            try:
+                dag_id = f"dag-{created[0].task_id[:8]}"
+                link = IntentLinkData(
+                    user_id=user_id,
+                    topic=title,
+                    intent_type=meta.get("intent_action", "unknown"),
+                    dag_id=dag_id,
+                    dag_parent_task_id=created[0].task_id,
+                    current_step=1,
+                    total_steps=len(created),
+                    completed_steps=0,
+                    pending_step_ids=[t.task_id for t in created],
+                )
+                await self.create_intent_link(**{
+                    "user_id": link.user_id,
+                    "topic": link.topic,
+                    "intent_type": link.intent_type,
+                    "dag_id": link.dag_id,
+                    "dag_parent_task_id": link.dag_parent_task_id,
+                    "total_steps": link.total_steps,
+                })
+                # Then update with pending_step_ids
+                await self.update_intent_link(link)
+            except Exception:
+                logger.debug("Failed to create IntentLink for macro task %s", created[0].task_id)
 
         return created
 
