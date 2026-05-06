@@ -1,8 +1,7 @@
-"""BrainIndexer — reads and indexes user brain directories."""
-
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +10,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _USER_BRAIN_BASE = Path.home() / ".hermes" / "users"
+_DEFAULT_CACHE_TTL_SECONDS = int(os.environ.get("HERMES_OS_BRAIN_CACHE_TTL", "300"))
 
 
 @dataclass
@@ -37,11 +37,19 @@ class BrainIndexer:
         ├── wiki/人物/       — person entries
         ├── wiki/概念/       — concept entries
         └── ...
+
+    Cache TTL
+    ---------
+    Results are cached for HERMES_OS_BRAIN_CACHE_TTL seconds (default 300).
+    File mtime is checked on each call — if any brain file is newer than the
+    cached entry, the cache is invalidated and re-indexed.
     """
 
-    def __init__(self, brain_base_path: Path | None = None) -> None:
+    def __init__(self, brain_base_path: Path | None = None, cache_ttl_seconds: int | None = None) -> None:
         self._cache: dict[str, BrainIndex] = {}
+        self._cache_mtime: dict[str, float] = {}  # mtime of brain dir when cached
         self._base_path = brain_base_path or _USER_BRAIN_BASE
+        self._ttl = cache_ttl_seconds or _DEFAULT_CACHE_TTL_SECONDS
 
     def _brain_path(self, user_id: str) -> Path:
         return self._base_path / user_id / "brain"
@@ -51,11 +59,22 @@ class BrainIndexer:
         Read and index a user's brain directory.
 
         Returns an empty BrainIndex if the brain directory doesn't exist.
-        """
-        if user_id in self._cache:
-            return self._cache[user_id]
 
+        Cache invalidation: if any file in the brain directory has been modified
+        since the last indexing (checked via mtime), the cache is refreshed.
+        """
+        cached = self._cache.get(user_id)
         brain_dir = self._brain_path(user_id)
+        if cached is not None:
+            cached_mtime = self._cache_mtime.get(user_id, 0)
+            try:
+                current_mtime = self._brain_mtime(brain_dir)
+                age_seconds = (datetime.now(UTC) - cached.last_indexed).total_seconds()
+                if current_mtime <= cached_mtime and age_seconds < self._ttl:
+                    return cached
+            except Exception:
+                pass
+
         if not brain_dir.exists():
             return BrainIndex(user_id=user_id)
 
@@ -72,8 +91,23 @@ class BrainIndexer:
             recent_wiki_updates=recent_wiki,
         )
 
+        try:
+            self._cache_mtime[user_id] = self._brain_mtime(brain_dir)
+        except Exception:
+            pass
         self._cache[user_id] = index
         return index
+
+    def _brain_mtime(self, brain_dir: Path) -> float:
+        """Return the most recent mtime of any file in the brain directory tree."""
+        newest = brain_dir.stat().st_mtime
+        for p in brain_dir.rglob("*"):
+            try:
+                if p.is_file():
+                    newest = max(newest, p.stat().st_mtime)
+            except OSError:
+                pass
+        return newest
 
     async def search_wiki(self, user_id: str, keyword: str) -> list[dict[str, Any]]:
         """Search wiki entries for a keyword."""
