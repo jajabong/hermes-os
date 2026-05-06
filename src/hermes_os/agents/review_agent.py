@@ -50,6 +50,9 @@ class ReviewAgent:
     async def invoke(self, request: AgentRequest, context: dict[str, Any]) -> AgentResult:
         """Execute code review task."""
         message = request.params.get("message", "")
+        persona_block = context.get("persona_block")
+
+        persona_prefix = persona_block.render() if persona_block else ""
 
         prompt = f"""## 代码审查任务
 
@@ -75,7 +78,7 @@ class ReviewAgent:
         try:
             result = await invoke(
                 prompt=prompt,
-                system_prompt=REVIEW_SYSTEM_PROMPT,
+                system_prompt=persona_prefix + "\n" + REVIEW_SYSTEM_PROMPT if persona_prefix else REVIEW_SYSTEM_PROMPT,
                 cwd=context.get("workspace", "/tmp"),
                 model=context.get("model", "sonnet"),
             )

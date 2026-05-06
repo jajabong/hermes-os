@@ -51,6 +51,9 @@ class TestAgent:
     async def invoke(self, request: AgentRequest, context: dict[str, Any]) -> AgentResult:
         """Execute testing strategy task."""
         message = request.params.get("message", "")
+        persona_block = context.get("persona_block")
+
+        persona_prefix = persona_block.render() if persona_block else ""
 
         prompt = f"""## 测试任务
 
@@ -76,7 +79,7 @@ class TestAgent:
         try:
             result = await invoke(
                 prompt=prompt,
-                system_prompt=TEST_SYSTEM_PROMPT,
+                system_prompt=persona_prefix + "\n" + TEST_SYSTEM_PROMPT if persona_prefix else TEST_SYSTEM_PROMPT,
                 cwd=context.get("workspace", "/tmp"),
                 model=context.get("model", "sonnet"),
             )

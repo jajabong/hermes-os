@@ -524,37 +524,63 @@ transient: true
     # -------------------------------------------------------------------------
 
     async def record_usage(self, skill_name: str, success: bool) -> None:
-        """Record a skill usage for effectiveness evaluation."""
+        """Record a skill usage for effectiveness evaluation.
+
+        Args:
+            skill_name: The skill identifier.
+            success: True if the skill contributed positively, False if it failed.
+        """
         if not skill_name:
             return  # Silently ignore empty skill names
         await self._lazy_init()
         db = await self._get_db()
+        now = datetime.now(UTC).isoformat()
 
         if success:
             await db.execute(
                 """
-                INSERT INTO skill_effectiveness (skill_key, uses, successes, last_evaluated)
-                VALUES (?, 1, 1, ?)
+                INSERT INTO skill_effectiveness (skill_key, uses, successes, failures, last_evaluated)
+                VALUES (?, 1, 1, 0, ?)
                 ON CONFLICT(skill_key) DO UPDATE SET
                     uses = uses + 1,
                     successes = successes + 1,
                     last_evaluated = ?
                 """,
-                (skill_name, datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat()),
+                (skill_name, now, now),
+            )
+            await db.execute(
+                """
+                UPDATE discovered_skills
+                SET usage_count = usage_count + 1, last_used = ?
+                WHERE name = ?
+                """,
+                (now, skill_name),
             )
         else:
             await db.execute(
                 """
-                INSERT INTO skill_effectiveness (skill_key, uses, failures, last_evaluated)
-                VALUES (?, 1, 1, ?)
+                INSERT INTO skill_effectiveness (skill_key, uses, successes, failures, last_evaluated)
+                VALUES (?, 1, 0, 1, ?)
                 ON CONFLICT(skill_key) DO UPDATE SET
                     uses = uses + 1,
                     failures = failures + 1,
                     last_evaluated = ?
                 """,
-                (skill_name, datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat()),
+                (skill_name, now, now),
+            )
+            await db.execute(
+                """
+                UPDATE discovered_skills
+                SET usage_count = usage_count + 1, last_used = ?
+                WHERE name = ?
+                """,
+                (now, skill_name),
             )
         await db.commit()
+
+    async def record_failure(self, skill_name: str) -> None:
+        """Record a skill failure. Convenience method for record_usage(skill_name, success=False)."""
+        await self.record_usage(skill_name, success=False)
 
     async def get_effectiveness(self, skill_name: str) -> dict[str, Any]:
         """Get effectiveness metrics for a skill."""
@@ -623,6 +649,7 @@ transient: true
     async def run_solidify_cycle(self) -> dict[str, Any]:
         """Review all transient skills and make solidify/discard decisions.
 
+        Also auto-discards stale transient skills (never used + discovered > 7 days ago).
         Call this periodically (e.g. once per hour of watcher runtime).
         Returns a summary dict of decisions made.
         """
@@ -630,12 +657,30 @@ transient: true
         db = await self._get_db()
         decisions: dict[str, list[str]] = {"solidify": [], "discard": [], "keep_transient": []}
 
+        # Staleness eviction: discard transient skills with 0 uses and discovered > 7 days ago
+        from datetime import timedelta
+
+        stale_cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
         async with db.execute(
             """
             SELECT name FROM discovered_skills
             WHERE solidified = 0
-            ORDER BY discovered_at DESC
-            LIMIT 50
+              AND discovered_at < ?
+              AND usage_count = 0
+            """,
+            (stale_cutoff,),
+        ) as cursor:
+            async for row in cursor:
+                skill_key = row["name"]
+                await self._discard_skill(skill_key)
+                decisions["discard"].append(skill_key)
+
+        # Solidify/discard decisions — order by last_evaluated so oldest get reviewed first
+        async with db.execute(
+            """
+            SELECT name FROM discovered_skills
+            WHERE solidified = 0
+            ORDER BY COALESCE(last_used, discovered_at) ASC
             """
         ) as cursor:
             async for row in cursor:

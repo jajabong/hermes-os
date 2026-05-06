@@ -85,7 +85,7 @@ class UnifiedRouter:
     """
 
     INTENT_PATTERNS: dict[str, list[str]] = {
-        # Order matters: more specific intents first
+        # Order matters: more specific / higher-priority intents first
         "investment": [
             "投资",
             "理财",
@@ -117,6 +117,14 @@ class UnifiedRouter:
             "检查",
             "看代码",
             "架构评审",
+        ],
+        # write_book BEFORE code because "写技术书" should match write_book not code
+        "write_book": [
+            "写书",
+            "写一本",
+            "出书",
+            "写小说",
+            "写技术书",
         ],
         "code": [
             "代码",
@@ -183,16 +191,6 @@ class UnifiedRouter:
             "环境配置",
             "发布",
         ],
-        "review": [
-            "代码审查",
-            "审查代码",
-            "审查",
-            "review",
-            "评审",
-            "检查",
-            "看代码",
-            "架构评审",
-        ],
         "test": [
             "测试",
             "test",
@@ -201,14 +199,6 @@ class UnifiedRouter:
             "e2e",
             "测试策略",
             "自动化测试",
-        ],
-        "write_book": [
-            "写书",
-            "写一本",
-            "写本",
-            "出书",
-            "写小说",
-            "写技术书",
         ],
     }
 
@@ -227,16 +217,20 @@ class UnifiedRouter:
         self._delegation_protocol = delegation_protocol
 
     def classify_intent(self, message: str) -> str:
-        """Fast keyword-based intent classification.
+        """Keyword-based intent classification with weighted scoring.
 
-        Uses exact substring matching against INTENT_PATTERNS.
-        Returns 'unknown' if no pattern matches.
+        Uses weighted substring matching — multiple keyword matches for an intent
+        increase its score. Returns highest-scoring intent, or 'unknown' if no match.
         """
         msg_lower = message.lower()
+        scores: dict[str, int] = {}
         for intent, keywords in self.INTENT_PATTERNS.items():
-            if any(kw in msg_lower for kw in keywords):
-                return intent
-        return "unknown"
+            score = sum(1 for kw in keywords if kw in msg_lower)
+            if score > 0:
+                scores[intent] = score
+        if not scores:
+            return "unknown"
+        return max(scores, key=scores.__getitem__)
 
     def match_agent(self, intent: str) -> str:
         """Match an intent to the best available agent name.
@@ -323,8 +317,6 @@ class UnifiedRouter:
                         else None,
                         "suggestions": clarification_result.suggestions,
                     },
-                    model_tier=routing_decision.tier.value,
-                    model_complexity_reason=routing_decision.complexity_reason,
                 )
 
         # Phase 4: Parse intent
@@ -389,6 +381,13 @@ class UnifiedRouter:
                         model_complexity_reason=routing_decision.complexity_reason,
                     )
                 # If delegation returned NOT_DELAGATED (MEDIUM complexity), continue to agent
+
+        # SIMPLE tasks: never dispatch to execution agents (CodeAgent, etc.)
+        # Always use ChiefAgent for simple queries — avoid hanging on code execution
+        if routing_decision.tier == ModelTier.MINIMAX and agent_name != "ChiefAgent":
+            logger.info("[UnifiedRouter] SIMPLE task -> ChiefAgent (was %s)", agent_name)
+            agent_name = "ChiefAgent"
+            is_fallback = True
 
         result_message = ""
         try:

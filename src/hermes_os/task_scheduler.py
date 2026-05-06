@@ -1158,6 +1158,13 @@ class TaskScheduler:
                 )
 
                 if result.decision == EscalationDecision.RETRY:
+                    # Sync retry_count from Guardian's checkpoint to task metadata
+                    # MUST be done before update_task_status calls _save_task_metadata
+                    cp = await self.guardian.load_checkpoint(task.task_id)
+                    if cp:
+                        task.metadata["retry_count"] = cp.retry_count
+                        await self._save_task_metadata(task.task_id, task.metadata)
+
                     # Exponential backoff then re-queue
                     if result.backoff_seconds > 0:
                         logger.info(

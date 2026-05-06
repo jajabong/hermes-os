@@ -51,6 +51,9 @@ class InvestmentAgent:
         message = request.params.get("message", "")
         user = context.get("user")
         user_id = getattr(user, "user_id", "unknown") if user else "unknown"
+        persona_block = context.get("persona_block")
+
+        persona_prefix = persona_block.render() if persona_block else ""
 
         prompt = f"""## 投资分析任务
 
@@ -76,7 +79,7 @@ class InvestmentAgent:
         try:
             result = await invoke(
                 prompt=prompt,
-                system_prompt=INVESTMENT_SYSTEM_PROMPT,
+                system_prompt=persona_prefix + "\n" + INVESTMENT_SYSTEM_PROMPT if persona_prefix else INVESTMENT_SYSTEM_PROMPT,
                 cwd=context.get("workspace", "/tmp"),
                 model=context.get("model", "sonnet"),
             )

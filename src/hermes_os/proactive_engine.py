@@ -219,11 +219,22 @@ class ProactiveEngine:
         loop.register_handler(EventType.CRON_TICK, self.on_cron_tick)
         loop.register_handler(EventType.TASK_COMPLETED, self.on_task_completed)
         loop.register_handler(EventType.TASK_FAILED, self.on_task_failed)
-        # GitHub event handlers
+        # GitHub event handlers — existing
         loop.register_handler(EventType.PULL_REQUEST_OPENED, self.on_github_pr_opened)
         loop.register_handler(EventType.PULL_REQUEST_MERGED, self.on_github_pr_merged)
         loop.register_handler(EventType.ISSUE_OPENED, self.on_github_issue_opened)
         loop.register_handler(EventType.PUSH, self.on_github_push)
+        # GitHub event handlers — missing (Phase 4)
+        loop.register_handler(EventType.PULL_REQUEST_CLOSED, self.on_github_pr_closed)
+        loop.register_handler(EventType.PULL_REQUEST_REOPENED, self.on_github_pr_reopened)
+        loop.register_handler(EventType.PULL_REQUEST_SYNCED, self.on_github_pr_synced)
+        loop.register_handler(EventType.PULL_REQUEST_REVIEW_REQUESTED, self.on_github_pr_review_requested)
+        loop.register_handler(EventType.ISSUE_CLOSED, self.on_github_issue_closed)
+        loop.register_handler(EventType.ISSUE_REOPENED, self.on_github_issue_reopened)
+        loop.register_handler(EventType.ISSUE_LABELED, self.on_github_issue_labeled)
+        loop.register_handler(EventType.ISSUE_COMMENT, self.on_github_issue_comment)
+        loop.register_handler(EventType.PULL_REQUEST_REVIEW, self.on_github_pr_review)
+        loop.register_handler(EventType.PULL_REQUEST_REVIEW_COMMENT, self.on_github_pr_review_comment)
         logger.info("ProactiveEngine registered with event loop")
 
     # -------------------------------------------------------------------------
@@ -990,6 +1001,256 @@ class ProactiveEngine:
                 )
         except Exception:
             logger.exception("GitHub push handler error")
+
+    # -------------------------------------------------------------------------
+    # Missing GitHub event handlers (Phase 4)
+    # -------------------------------------------------------------------------
+
+    async def on_github_pr_closed(self, event: Event) -> None:
+        """PR closed (non-merged) → archive task, notify closure."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            pr_number = event.payload.get("pr_number", "?")
+            user_id = event.payload.get("user_id", "")
+            logger.info("GitHub PR #%d closed (not merged)", pr_number)
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"🔚 PR #{pr_number} in {repo} was closed without merging.",
+            )
+        except Exception:
+            logger.exception("GitHub PR closed handler error")
+
+    async def on_github_pr_reopened(self, event: Event) -> None:
+        """PR reopened → reactivate review task."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            pr_number = event.payload.get("pr_number", "?")
+            pr_title = event.payload.get("title", "PR review")
+            user_id = event.payload.get("user_id", "")
+            logger.info("GitHub PR #%d reopened", pr_number)
+            task_title = f"Re-review PR #{pr_number}: {pr_title}"
+            await self._scheduler.create_macro_task(
+                user_id=user_id,
+                title=task_title,
+                subtasks=[{
+                    "title": f"Re-review PR #{pr_number}",
+                    "description": (
+                        f"PR #{pr_number} in {repo} was reopened.\n"
+                        f"Title: {pr_title}\nRe-review: code quality, tests, merge readiness."
+                    ),
+                }],
+                metadata={
+                    "intent_action": "review",
+                    "role": "reviewer",
+                    "github_repo": repo,
+                    "github_pr": pr_number,
+                    "skip_confirmation": True,
+                },
+            )
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"🔄 PR #{pr_number} in {repo} reopened — review task created.",
+            )
+        except Exception:
+            logger.exception("GitHub PR reopened handler error")
+
+    async def on_github_pr_synced(self, event: Event) -> None:
+        """PR force-pushed or synced → notify new commits."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            pr_number = event.payload.get("pr_number", "?")
+            branch = event.payload.get("branch", "?")
+            user_id = event.payload.get("user_id", "")
+            logger.info("GitHub PR #%d synced (force-push)", pr_number)
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"🔄 PR #{pr_number} in {repo} — new commits detected on {branch}.",
+            )
+        except Exception:
+            logger.exception("GitHub PR synced handler error")
+
+    async def on_github_pr_review_requested(self, event: Event) -> None:
+        """Review requested → assign reviewer, create task."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            pr_number = event.payload.get("pr_number", "?")
+            pr_title = event.payload.get("title", "PR review")
+            user_id = event.payload.get("user_id", "")
+            logger.info("GitHub PR #%d review requested", pr_number)
+            task_title = f"Review PR #{pr_number}: {pr_title}"
+            await self._scheduler.create_macro_task(
+                user_id=user_id,
+                title=task_title,
+                subtasks=[{
+                    "title": f"Review PR #{pr_number}",
+                    "description": (
+                        f"Review requested for PR #{pr_number} in {repo}\n"
+                        f"Title: {pr_title}\nCheck: code quality, tests, security, merge readiness."
+                    ),
+                }],
+                metadata={
+                    "intent_action": "review",
+                    "role": "reviewer",
+                    "github_repo": repo,
+                    "github_pr": pr_number,
+                    "skip_confirmation": True,
+                },
+            )
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"👀 Review requested for PR #{pr_number} in {repo} — review task created.",
+            )
+        except Exception:
+            logger.exception("GitHub PR review requested handler error")
+
+    async def on_github_issue_closed(self, event: Event) -> None:
+        """Issue closed → mark investigation task complete."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            issue_number = event.payload.get("issue_number", "?")
+            user_id = event.payload.get("user_id", "")
+            logger.info("GitHub issue #%d closed", issue_number)
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"✅ Issue #{issue_number} in {repo} has been closed.",
+            )
+        except Exception:
+            logger.exception("GitHub issue closed handler error")
+
+    async def on_github_issue_reopened(self, event: Event) -> None:
+        """Issue reopened → reactivate investigation task."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            issue_number = event.payload.get("issue_number", "?")
+            issue_title = event.payload.get("title", "Issue investigation")
+            user_id = event.payload.get("user_id", "")
+            logger.info("GitHub issue #%d reopened", issue_number)
+            task_title = f"Re-investigate issue #{issue_number}: {issue_title}"
+            await self._scheduler.create_macro_task(
+                user_id=user_id,
+                title=task_title,
+                subtasks=[{
+                    "title": f"Re-investigate issue #{issue_number}",
+                    "description": f"Issue #{issue_number} in {repo} was reopened.\nTitle: {issue_title}",
+                }],
+                metadata={
+                    "intent_action": "research",
+                    "role": "researcher",
+                    "github_repo": repo,
+                    "github_issue": issue_number,
+                    "skip_confirmation": True,
+                },
+            )
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"🔄 Issue #{issue_number} in {repo} reopened — investigation task created.",
+            )
+        except Exception:
+            logger.exception("GitHub issue reopened handler error")
+
+    async def on_github_issue_labeled(self, event: Event) -> None:
+        """Issue labeled → route to appropriate handler based on label."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            issue_number = event.payload.get("issue_number", "?")
+            labels = event.payload.get("labels", [])
+            user_id = event.payload.get("user_id", "")
+            logger.info("GitHub issue #%d labeled: %s", issue_number, labels)
+
+            # Route bug/fix labels to code tasks
+            if any(l in labels for l in ["bug", "fix", "urgent"]):
+                await self._scheduler.create_macro_task(
+                    user_id=user_id,
+                    title=f"Fix labeled issue #{issue_number}",
+                    subtasks=[{
+                        "title": f"Fix issue #{issue_number}",
+                        "description": f"Issue #{issue_number} in {repo} labeled: {labels}",
+                    }],
+                    metadata={
+                        "intent_action": "code",
+                        "role": "executor",
+                        "github_repo": repo,
+                        "github_issue": issue_number,
+                        "skip_confirmation": True,
+                    },
+                )
+                await self._enqueue_notification(
+                    user_id=user_id,
+                    message=f"🐛 Issue #{issue_number} in {repo} labeled as bug — fix task created.",
+                )
+        except Exception:
+            logger.exception("GitHub issue labeled handler error")
+
+    async def on_github_issue_comment(self, event: Event) -> None:
+        """Issue comment → add to investigation context."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            issue_number = event.payload.get("issue_number", "?")
+            user_id = event.payload.get("user_id", "")
+            commenter = event.payload.get("commenter", "unknown")
+            logger.info("GitHub comment on issue #%d by %s", issue_number, commenter)
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"💬 New comment on issue #{issue_number} in {repo} by {commenter}.",
+            )
+        except Exception:
+            logger.exception("GitHub issue comment handler error")
+
+    async def on_github_pr_review(self, event: Event) -> None:
+        """PR review submitted → check review status, trigger follow-up."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            pr_number = event.payload.get("pr_number", "?")
+            review_state = event.payload.get("review_state", "unknown")
+            user_id = event.payload.get("user_id", "")
+            logger.info("GitHub PR #%d review state: %s", pr_number, review_state)
+            if review_state == "approved":
+                await self._enqueue_notification(
+                    user_id=user_id,
+                    message=f"✅ PR #{pr_number} in {repo} approved — ready to merge.",
+                )
+            elif review_state == "changes_requested":
+                await self._enqueue_notification(
+                    user_id=user_id,
+                    message=f"🔄 PR #{pr_number} in {repo} — changes requested.",
+                )
+        except Exception:
+            logger.exception("GitHub PR review handler error")
+
+    async def on_github_pr_review_comment(self, event: Event) -> None:
+        """PR review comment → notify author of review comments."""
+        if not self._scheduler:
+            return
+        try:
+            repo = event.payload.get("repository", "unknown")
+            pr_number = event.payload.get("pr_number", "?")
+            user_id = event.payload.get("user_id", "")
+            commenter = event.payload.get("commenter", "unknown")
+            logger.info("GitHub review comment on PR #%d by %s", pr_number, commenter)
+            await self._enqueue_notification(
+                user_id=user_id,
+                message=f"💬 Review comment on PR #{pr_number} in {repo} by {commenter}.",
+            )
+        except Exception:
+            logger.exception("GitHub PR review comment handler error")
 
     async def _get_task_stats(self) -> dict:
         """Get a quick snapshot of task counts by status."""

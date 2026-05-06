@@ -74,7 +74,7 @@ class CodeAgent:
         labor = CodeLabor()
         task = request.params.get("message", "")
         meta = request.params.get("meta", {})
-        workspace = context.get("workspace", "/tmp")
+        workspace = context.get("workspace") or "/tmp"
         if isinstance(workspace, str):
             workspace = Path(workspace)
         try:
@@ -102,7 +102,7 @@ class ContentAgent:
         labor = ContentLabor()
         task = request.params.get("message", "")
         meta = request.params.get("meta", {})
-        workspace = context.get("workspace", "/tmp")
+        workspace = context.get("workspace") or "/tmp"
         if isinstance(workspace, str):
             workspace = Path(workspace)
         try:
@@ -130,7 +130,7 @@ class ResearchAgent:
         labor = ResearchLabor()
         task = request.params.get("message", "")
         meta = request.params.get("meta", {})
-        workspace = context.get("workspace", "/tmp")
+        workspace = context.get("workspace") or "/tmp"
         if isinstance(workspace, str):
             workspace = Path(workspace)
         try:

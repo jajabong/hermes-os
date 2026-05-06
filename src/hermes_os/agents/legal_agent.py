@@ -49,6 +49,9 @@ class LegalAgent:
     async def invoke(self, request: AgentRequest, context: dict[str, Any]) -> AgentResult:
         """Execute legal advisory task."""
         message = request.params.get("message", "")
+        persona_block = context.get("persona_block")
+
+        persona_prefix = persona_block.render() if persona_block else ""
 
         prompt = f"""## 法律咨询任务
 
@@ -74,7 +77,7 @@ class LegalAgent:
         try:
             result = await invoke(
                 prompt=prompt,
-                system_prompt=LEGAL_SYSTEM_PROMPT,
+                system_prompt=persona_prefix + "\n" + LEGAL_SYSTEM_PROMPT if persona_prefix else LEGAL_SYSTEM_PROMPT,
                 cwd=context.get("workspace", "/tmp"),
                 model=context.get("model", "sonnet"),
             )

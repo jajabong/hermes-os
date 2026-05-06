@@ -307,12 +307,13 @@ class DelegationProtocol:
         # 确定 agent 名称
         agent_name = INTENT_AGENT_MAP.get(intent, "ChiefAgent")
 
-        # 构建 metadata（含 notify_target 用于飞书推送）
+        # Build metadata — skip_confirmation=True for automated intents (DAG/cron-triggered)
         metadata: dict[str, Any] = {
             "original_message": message,
             "intent": intent,
             "agent_name": agent_name,
             "delegated_via": "DelegationProtocol",
+            "skip_confirmation": True,  # Auto-confirm: don't wait for user input
         }
 
         # 如果是飞书平台，附加 notify_target
@@ -322,10 +323,10 @@ class DelegationProtocol:
                 "open_id": platform_user_id,
             }
 
-        # 创建 TaskScheduler 任务
+        # Create TaskScheduler task — use schedule_task() for fire-and-forget fast-path
         task_id = ""
         try:
-            task = await self._scheduler.create_task(
+            task = await self._scheduler.schedule_task(
                 user_id=user_id,
                 title=title,
                 description=message,
@@ -333,7 +334,7 @@ class DelegationProtocol:
             )
             task_id = task.task_id
 
-            # 记录话题到 TopicTracker（用于「接着上次」检测）
+            # Record topic to TopicTracker (for "继续" detection)
             if self._topic_tracker_factory and task_id:
                 tracker = self._topic_tracker_factory(user_id=user_id)
                 await tracker.record_topic(

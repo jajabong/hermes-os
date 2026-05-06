@@ -51,6 +51,9 @@ class DeployAgent:
     async def invoke(self, request: AgentRequest, context: dict[str, Any]) -> AgentResult:
         """Execute deployment strategy task."""
         message = request.params.get("message", "")
+        persona_block = context.get("persona_block")
+
+        persona_prefix = persona_block.render() if persona_block else ""
 
         prompt = f"""## 部署方案任务
 
@@ -77,7 +80,7 @@ class DeployAgent:
         try:
             result = await invoke(
                 prompt=prompt,
-                system_prompt=DEPLOY_SYSTEM_PROMPT,
+                system_prompt=persona_prefix + "\n" + DEPLOY_SYSTEM_PROMPT if persona_prefix else DEPLOY_SYSTEM_PROMPT,
                 cwd=context.get("workspace", "/tmp"),
                 model=context.get("model", "sonnet"),
             )

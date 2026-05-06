@@ -50,6 +50,9 @@ class EducationAgent:
     async def invoke(self, request: AgentRequest, context: dict[str, Any]) -> AgentResult:
         """Execute education tutoring task."""
         message = request.params.get("message", "")
+        persona_block = context.get("persona_block")
+
+        persona_prefix = persona_block.render() if persona_block else ""
 
         prompt = f"""## 教育辅导任务
 
@@ -75,7 +78,7 @@ class EducationAgent:
         try:
             result = await invoke(
                 prompt=prompt,
-                system_prompt=EDUCATION_SYSTEM_PROMPT,
+                system_prompt=persona_prefix + "\n" + EDUCATION_SYSTEM_PROMPT if persona_prefix else EDUCATION_SYSTEM_PROMPT,
                 cwd=context.get("workspace", "/tmp"),
                 model=context.get("model", "sonnet"),
             )
