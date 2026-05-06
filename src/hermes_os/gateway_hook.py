@@ -34,6 +34,8 @@ from hermes_os.shard_manager import ShardedStorage, ShardManager
 from hermes_os.skill_discovery import SkillDiscovery
 from hermes_os.skill_loader import SkillLoader
 from hermes_os.task_scheduler import TaskScheduler, TaskStatus
+from hermes_os.topic_tracker import TopicTracker
+from hermes_os.intent_clarifier import IntentClarifier
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,7 @@ class HermesOSHook:
         self._approval_tracker: ApprovalTracker | None = None
         self._goal_tracker: GoalTracker | None = None
         self._conv_state: ConversationStateManager | None = None
+        self._intent_clarifier: IntentClarifier = IntentClarifier()
 
         # Track fire-and-forget async tasks to prevent leak
         self._pending_tasks: set[asyncio.Task[None]] = set()
@@ -231,6 +234,10 @@ class HermesOSHook:
             await self._router.initialize()
         return self._router
 
+    def _get_topic_tracker(self, user_id: str) -> TopicTracker:
+        """Create a TopicTracker for the given user (stateless, cheap to create)."""
+        return TopicTracker(user_id=user_id)
+
     async def _get_cli(self) -> KnowledgeCLI:
         if self._cli is None:
             self._cli = KnowledgeCLI(db_path=self._config.knowledge_db_path)
@@ -306,8 +313,10 @@ class HermesOSHook:
             user_id_alt=user_id_alt,
         )
 
-        # Inject GoalTracker context: enables "继续上次那件事" understanding
+        # Inject per-user context blocks: GoalTracker → TopicTracker → Skills → Persona
         user_id = routed.user.user_id
+
+        # GoalTracker context: enables "继续上次那件事" goal understanding
         if user_id and self._goal_tracker:
             try:
                 goal_ctx = await self._goal_tracker.get_active_goal_context(user_id)
@@ -317,6 +326,21 @@ class HermesOSHook:
                     )
             except Exception:
                 logger.debug("Failed to inject goal context for user %s", user_id)
+
+        # TopicTracker context: enables "继续上次那件事" topic continuation
+        if user_id:
+            try:
+                tracker = self._get_topic_tracker(user_id)
+                should_resume, topic_ctx = await tracker.detect_and_resume(raw_message)
+                if should_resume and topic_ctx:
+                    topic_block = (
+                        f"<last_topic>\n"
+                        f"  <topic>{topic_ctx.topic}</topic>\n"
+                        f"</last_topic>"
+                    )
+                    gateway_event_obj.text = f"{gateway_event_obj.text}\n\n{topic_block}"
+            except Exception:
+                logger.debug("Failed to inject topic context for user %s", user_id)
 
         # Inject transient skills discovered at runtime (SkillDiscovery feedback loop)
         loader = SkillLoader(skill_discovery=self._skill_discovery)
@@ -330,7 +354,6 @@ class HermesOSHook:
 
             assembler = PersonaAssembler(user_id=user_id)
             persona_block = await assembler.assemble()
-            # Prepend persona block to the message (System Prompt injection)
             gateway_event_obj.text = f"{persona_block.render()}\n\n{gateway_event_obj.text}"
 
     def _publish_user_message(self, context: dict, message: str) -> None:
@@ -374,6 +397,10 @@ class HermesOSHook:
             )
 
             if not await self._chief.should_auto_create_task(intent):
+                # Check for vague message — if IntentClarifier says it's vague, ask user to clarify
+                clar = self._intent_clarifier.ask(message)
+                if clar.needs_clarification:
+                    self._spawn(self._send_clarification_question(user_id, clar.question))
                 return
 
             # Get or create scheduler (uses lazy init + watcher)
@@ -394,6 +421,16 @@ class HermesOSHook:
                     len(tasks),
                     intent.action.value,
                     intent.confidence,
+                )
+
+                # Record topic for TopicTracker continuity
+                self._spawn(
+                    self._record_topic_bg(
+                        user_id=user_id,
+                        topic=intent.action.value,
+                        task_id=tasks[0].task_id if tasks else "",
+                        intent_type=intent.action.value,
+                    )
                 )
 
                 # Delegation feedback: tell the user "收到，我去安排"
@@ -458,6 +495,30 @@ class HermesOSHook:
             await feishu.send_message_to_user(user_id=user_id, message=message)
         except Exception:
             logger.debug("Delegation feedback send failed for user %s", user_id)
+
+    async def _send_clarification_question(self, user_id: str, question: str) -> None:
+        """Send an intent clarification question to the user (non-blocking)."""
+        from hermes_os.feishu_enhancer import FeishuEnhancer
+
+        try:
+            feishu = FeishuEnhancer()
+            await feishu.send_message_to_user(user_id=user_id, message=question)
+        except Exception:
+            logger.debug("Clarification question send failed for user %s", user_id)
+
+    async def _record_topic_bg(
+        self,
+        user_id: str,
+        topic: str,
+        task_id: str,
+        intent_type: str,
+    ) -> None:
+        """Record current topic to LAST_TOPIC.md for session continuity (non-blocking)."""
+        try:
+            tracker = TopicTracker(user_id=user_id)
+            await tracker.record_topic(topic=topic, task_id=task_id, intent=intent_type)
+        except Exception:
+            logger.debug("TopicTracker record failed for user %s", user_id)
 
     def _get_user_profile(self, user_id_alt: str) -> dict | None:
         """Look up a user profile from hermes_state.UserProfileDB by union_id."""
