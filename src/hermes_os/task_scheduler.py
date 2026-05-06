@@ -30,6 +30,7 @@ from hermes_os.claude_code_invocator import (
 )
 from hermes_os.conversation_state import ConversationStateManager
 from hermes_os.event_loop import Event, EventType, get_event_bus
+from hermes_os.guardian_controller import EscalationDecision, GuardianConfig, GuardianController
 from hermes_os.jarvis_interface import JarvisInterface
 from hermes_os.notification_manager import NotificationManager
 from hermes_os.org_context import build_team_context
@@ -262,6 +263,7 @@ class TaskScheduler:
         self._jarvis: JarvisInterface | None = None
         self._event_bus = get_event_bus()
         self._notification_manager: NotificationManager | None = None
+        self._guardian: GuardianController | None = None
 
     @property
     def jarvis(self) -> JarvisInterface:
@@ -274,6 +276,17 @@ class TaskScheduler:
         if self._notification_manager is None:
             self._notification_manager = NotificationManager(jarvis=self.jarvis)
         return self._notification_manager
+
+    @property
+    def guardian(self) -> GuardianController:
+        if self._guardian is None:
+            self._guardian = GuardianController(
+                GuardianConfig(
+                    checkpoint_dir=str(Path.home() / ".hermes" / "checkpoints"),
+                    jarvis_factory=lambda: self.jarvis,
+                )
+            )
+        return self._guardian
 
     async def _get_db(self) -> aiosqlite.Connection:
         if self._db is None:
@@ -1058,6 +1071,14 @@ class TaskScheduler:
                 model = task.metadata.get("model")
                 base_system_prompt = task.metadata.get("system_prompt") or ""
 
+                # Inject correction prompt if Guardian returned one (CORRECT decision)
+                correction_prompt = task.metadata.get("correction_prompt")
+                if correction_prompt:
+                    base_system_prompt = f"{correction_prompt.strip()}\n\n{base_system_prompt}"
+                    # Clear after injection (one-time use)
+                    task.metadata.pop("correction_prompt", None)
+                    await self._save_task_metadata(task.task_id, task.metadata)
+
                 # Build full context: org identity + role + team context
                 team_context = await build_team_context(task, self)
 
@@ -1130,45 +1151,70 @@ class TaskScheduler:
                 # Record failure in org memory
                 self._org_memory.record_task_result(task.description, success=False, error=str(e))
 
-                # On task failure, proactively search for solutions
-                discovered = await self._skill_discovery.proactive_discovery(
-                    task_description=f"fix: {task.description}",
-                    gap_type="failed_task",
+                # Delegate error attribution and escalation decision to GuardianController
+                result = await self.guardian.handle_invocation_error(
+                    task.task_id,
+                    str(e)[:2000],
                 )
-                if discovered:
-                    logger.info(
-                        "Discovered %d solution skill(s) for failed task %s",
-                        len(discovered),
-                        task.task_id,
-                    )
 
-                # Retry logic: if retry_count < 3, re-queue as PENDING
-                retry_count = task.metadata.get("retry_count", 0)
-                if retry_count < 3:
-                    task.metadata["retry_count"] = retry_count + 1
-                    await self._save_task_metadata(task.task_id, task.metadata)
+                if result.decision == EscalationDecision.RETRY:
+                    # Exponential backoff then re-queue
+                    if result.backoff_seconds > 0:
+                        logger.info(
+                            "Guardian: task %s RETRY in %.0fs (attr=%s)",
+                            task.task_id,
+                            result.backoff_seconds,
+                            result.attribution.error_type.value,
+                        )
+                        await asyncio.sleep(result.backoff_seconds)
+
+                    # Re-queue for retry
                     await self.update_task_status(
                         task.task_id,
-                        TaskStatus.PENDING,  # re-queue instead of fail
-                        error=f"Retry {retry_count + 1}/3: {str(e)[:500]}",
+                        TaskStatus.PENDING,
+                        error=f"Retry attempt ({result.attribution.error_type.value}): {str(e)[:300]}",
                     )
-                    logger.warning(
-                        "Task %s failed (attempt %d/%d), re-queued: %s",
+
+                elif result.decision == EscalationDecision.CORRECT:
+                    # Store correction prompt for injection on retry
+                    logger.info(
+                        "Guardian: task %s CORRECT — %s",
                         task.task_id,
-                        retry_count + 1,
-                        3,
-                        str(e)[:200],
+                        result.attribution.diagnosis,
                     )
-                else:
-                    # Failure: mark failed with error (exceeded retries)
+                    task.metadata["correction_prompt"] = result.correction_prompt
+                    task.metadata["error_attribution"] = result.attribution.error_type.value
+                    await self._save_task_metadata(task.task_id, task.metadata)
+
+                    # Backoff then re-queue with correction
+                    if result.backoff_seconds > 0:
+                        await asyncio.sleep(result.backoff_seconds)
+
+                    await self.update_task_status(
+                        task.task_id,
+                        TaskStatus.PENDING,
+                        error=f"Correcting ({result.attribution.error_type.value}): {str(e)[:300]}",
+                    )
+
+                elif result.decision == EscalationDecision.ESCALATE:
+                    # Guardian handles escalation card to user
+                    await self.guardian.escalate(task.task_id)
                     error_msg = str(e)[:2000]
                     await self.update_task_status(
                         task.task_id,
                         TaskStatus.FAILED,
-                        error=f"Exceeded retries: {error_msg}",
+                        error=f"Guardian escalation: {result.attribution.diagnosis} — {error_msg}",
                     )
+                    # Unblock dependents
+                    await self.unblock_dependents(task.task_id)
 
-                    # Unblock dependent tasks even on failure
+                else:  # ABORT
+                    error_msg = str(e)[:2000]
+                    await self.update_task_status(
+                        task.task_id,
+                        TaskStatus.FAILED,
+                        error=f"Guardian abort: {error_msg}",
+                    )
                     await self.unblock_dependents(task.task_id)
 
                     # Send notification if configured
