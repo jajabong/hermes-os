@@ -91,12 +91,14 @@ class BrainIndexer:
                     continue
                 content = await self._read_file(md_file)
                 if keyword.lower() in content.lower():
-                    results.append({
-                        "category": category_dir.name,
-                        "file": md_file.stem,
-                        "path": str(md_file),
-                        "snippet": content[:200],
-                    })
+                    results.append(
+                        {
+                            "category": category_dir.name,
+                            "file": md_file.stem,
+                            "path": str(md_file),
+                            "snippet": content[:200],
+                        }
+                    )
         return results
 
     async def get_active_projects(self, user_id: str) -> list[str]:
@@ -108,9 +110,7 @@ class BrainIndexer:
 
         return [f.stem for f in projects_dir.iterdir() if f.suffix == ".md"]
 
-    async def get_project_context(
-        self, user_id: str, project_name: str
-    ) -> dict[str, Any] | None:
+    async def get_project_context(self, user_id: str, project_name: str) -> dict[str, Any] | None:
         """Read a project wiki entry."""
         brain_dir = self._brain_path(user_id)
         project_file = brain_dir / "wiki" / "项目" / f"{project_name}.md"

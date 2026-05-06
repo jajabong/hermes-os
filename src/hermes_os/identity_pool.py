@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Identity:
     """A registered platform identity with session."""
+
     platform: str
     identity_id: str
     session_token: str
@@ -109,10 +110,7 @@ class IdentityPool:
         Useful for round-robin session selection.
         """
         platform_identities = self._identities.get(platform, {})
-        active = [
-            i for i in platform_identities.values()
-            if i.is_active()
-        ]
+        active = [i for i in platform_identities.values() if i.is_active()]
         if not active:
             return None
         return max(active, key=lambda i: i.last_used)
@@ -152,10 +150,7 @@ class IdentityPool:
     def stats(self) -> dict[str, Any]:
         """Get pool statistics."""
         total = sum(len(ids) for ids in self._identities.values())
-        active = sum(
-            1 for ids in self._identities.values()
-            for i in ids.values() if i.is_active()
-        )
+        active = sum(1 for ids in self._identities.values() for i in ids.values() if i.is_active())
         return {
             "total_identities": total,
             "active_identities": active,

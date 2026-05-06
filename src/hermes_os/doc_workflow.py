@@ -15,21 +15,21 @@ Each type has:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
 
 class DocType(str, Enum):
-    NOTICE = "notice"       # 通知
-    REPORT = "report"       # 报告
-    REQUEST = "request"    # 请示
-    LETTER = "letter"      # 函
+    NOTICE = "notice"  # 通知
+    REPORT = "report"  # 报告
+    REQUEST = "request"  # 请示
+    LETTER = "letter"  # 函
 
 
 class ApprovalFlow(str, Enum):
-    NONE = "none"              # 直接发出，无需审批
-    IMMEDIATE = "immediate"    # 立即提交上级
+    NONE = "none"  # 直接发出，无需审批
+    IMMEDIATE = "immediate"  # 立即提交上级
     AWAIT_REPLY = "await_reply"  # 需等待批复（妥否，请批示）
 
 
@@ -95,7 +95,16 @@ _TEMPLATES: dict[DocType, dict[str, Any]] = {
             "{sender}",
             "{date}",
         ],
-        "placeholders": ["title", "to", "section1", "section2", "section3", "section4", "sender", "date"],
+        "placeholders": [
+            "title",
+            "to",
+            "section1",
+            "section2",
+            "section3",
+            "section4",
+            "sender",
+            "date",
+        ],
     },
     DocType.REQUEST: {
         "approval": ApprovalFlow.AWAIT_REPLY,
@@ -138,6 +147,7 @@ _TEMPLATES: dict[DocType, dict[str, Any]] = {
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def get_template(doc_type: DocType) -> dict[str, Any]:
     """Return template config for a given document type."""
     return _TEMPLATES.get(doc_type, _TEMPLATES[DocType.NOTICE])
@@ -179,6 +189,7 @@ def apply_terminology(text: str, terminology: dict[str, str] | None = None) -> s
 @dataclass
 class DocWorkflowResult:
     """Result of rendering a government document workflow."""
+
     doc_type: DocType
     rendered_text: str
     approval_flow: ApprovalFlow
@@ -196,7 +207,13 @@ class DocWorkflowResult:
             },
             "elements": [
                 {"tag": "div", "text": {"tag": "lark_md", "content": content}},
-                {"tag": "div", "text": {"tag": "lark_md", "content": f"**类型**: {self.doc_type.value}\n**审批流程**: {self.approval_flow.value}"}},
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**类型**: {self.doc_type.value}\n**审批流程**: {self.approval_flow.value}",
+                    },
+                },
             ],
         }
 

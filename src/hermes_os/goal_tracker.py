@@ -16,18 +16,18 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
 
 import aiosqlite
 
 
 class GoalPhase(str, Enum):
     """Phases within a goal lifecycle."""
-    INITIATED = "initiated"      # Goal identified, not started
+
+    INITIATED = "initiated"  # Goal identified, not started
     IN_PROGRESS = "in_progress"  # Active work on this goal
-    BLOCKED = "blocked"          # Waiting on external factor (approval, response)
-    COMPLETED = "completed"      # Goal achieved
-    ABANDONED = "abandoned"     # User explicitly gave up
+    BLOCKED = "blocked"  # Waiting on external factor (approval, response)
+    COMPLETED = "completed"  # Goal achieved
+    ABANDONED = "abandoned"  # User explicitly gave up
 
 
 class GoalPattern(str, Enum):
@@ -36,6 +36,7 @@ class GoalPattern(str, Enum):
 
     Each pattern defines the ordered phases a goal goes through.
     """
+
     # Research → Implement → Test → Deploy
     RESEARCH_TO_DEPLOY = "research_to_deploy"
     # Investigate → Propose → Get Approval → Implement
@@ -76,15 +77,34 @@ _GOAL_PHASES: dict[GoalPattern, list[str]] = {
 # Keyword → GoalPattern mapping for intent-based detection
 _PATTERN_KEYWORDS: dict[GoalPattern, list[str]] = {
     GoalPattern.RESEARCH_TO_DEPLOY: [
-        "研究", "实现", "测试", "部署", "上线",
-        "research", "implement", "deploy", "研究一下", "做一下",
+        "研究",
+        "实现",
+        "测试",
+        "部署",
+        "上线",
+        "research",
+        "implement",
+        "deploy",
+        "研究一下",
+        "做一下",
     ],
     GoalPattern.PROPOSAL_TO_IMPLEMENT: [
-        "请示", "申请", "方案", "审批", "汇报",
-        "request", "proposal", "approve", "方案评审",
+        "请示",
+        "申请",
+        "方案",
+        "审批",
+        "汇报",
+        "request",
+        "proposal",
+        "approve",
+        "方案评审",
     ],
     GoalPattern.STUDY_TO_REVIEW: [
-        "调研", "方案", "评审", "review", "audit",
+        "调研",
+        "方案",
+        "评审",
+        "review",
+        "audit",
     ],
 }
 
@@ -104,12 +124,13 @@ _INTENT_TO_PATTERN: dict[str, GoalPattern] = {
 @dataclass
 class GoalState:
     """A tracked goal with phase progression."""
+
     goal_id: str
     user_id: str
     pattern: GoalPattern
     current_phase: str
     phase_index: int
-    description: str         # Human-readable goal description
+    description: str  # Human-readable goal description
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None = None
@@ -142,12 +163,13 @@ class GoalState:
 @dataclass
 class EvolutionEntry:
     """A record of goal description change — records the evolution path."""
+
     goal_id: str
     timestamp: datetime
     previous_description: str
     new_description: str
-    reason: str              # Why the goal changed (free text)
-    trigger: str             # What triggered the change: "user_input", "system_suggestion", "completion"
+    reason: str  # Why the goal changed (free text)
+    trigger: str  # What triggered the change: "user_input", "system_suggestion", "completion"
 
 
 class GoalTracker:
@@ -215,12 +237,8 @@ class GoalTracker:
             )
             """
         )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_goals_user ON goal_states(user_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_goals_status ON goal_states(completed_at)"
-        )
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_goals_user ON goal_states(user_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_goals_status ON goal_states(completed_at)")
         await db.execute(
             """
             CREATE TABLE IF NOT EXISTS goal_evolution_log (
@@ -234,9 +252,7 @@ class GoalTracker:
             )
             """
         )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_evo_goal ON goal_evolution_log(goal_id)"
-        )
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_evo_goal ON goal_evolution_log(goal_id)")
         await db.commit()
 
     # -------------------------------------------------------------------------
@@ -410,9 +426,7 @@ class GoalTracker:
     async def get_goal(self, goal_id: str) -> GoalState | None:
         """Get a goal by ID."""
         db = await self._get_db()
-        async with db.execute(
-            "SELECT * FROM goal_states WHERE goal_id = ?", (goal_id,)
-        ) as cursor:
+        async with db.execute("SELECT * FROM goal_states WHERE goal_id = ?", (goal_id,)) as cursor:
             row = await cursor.fetchone()
             return self._row_to_goal(row) if row else None
 
@@ -451,9 +465,7 @@ class GoalTracker:
 
         return "\n".join(context_parts)
 
-    async def get_recent_goals(
-        self, user_id: str, limit: int = 5
-    ) -> list[GoalState]:
+    async def get_recent_goals(self, user_id: str, limit: int = 5) -> list[GoalState]:
         """Get recently updated goals for a user."""
         db = await self._get_db()
         async with db.execute(
@@ -576,9 +588,7 @@ class GoalTracker:
 
         return "\n".join(context_parts)
 
-    async def infer_next_action(
-        self, user_id: str, current_message: str
-    ) -> str | None:
+    async def infer_next_action(self, user_id: str, current_message: str) -> str | None:
         """
         Given the user's current message, infer if they're advancing
         the active goal or starting something new.
@@ -593,8 +603,15 @@ class GoalTracker:
 
         # Check if the message indicates the current phase is done
         completion_signals = [
-            "完成了", "搞定了", "done", "finished", "完成了",
-            "好了", "搞定", "可以了", "end",
+            "完成了",
+            "搞定了",
+            "done",
+            "finished",
+            "完成了",
+            "好了",
+            "搞定",
+            "可以了",
+            "end",
         ]
         if any(s in msg_lower for s in completion_signals):
             if goal.next_phase:

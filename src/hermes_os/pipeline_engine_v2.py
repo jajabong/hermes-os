@@ -25,6 +25,7 @@ initialize_default_labors()
 
 class StageStatus(str, Enum):
     """Pipeline execution status."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -35,6 +36,7 @@ class StageStatus(str, Enum):
 @dataclass
 class PipelineStage:
     """Definition of a single pipeline stage."""
+
     stage: str  # e.g., "M1_OUTLINE"
     labor: str  # e.g., "ContentLabor"
     task: str  # e.g., "Generate structured outline"
@@ -44,22 +46,25 @@ class PipelineStage:
 @dataclass
 class PipelineConfig:
     """Pipeline configuration parsed from Pipeline.yaml."""
+
     name: str
     description: str
     steps: list[PipelineStage] = field(default_factory=list)
 
     @classmethod
-    def from_yaml(cls, yaml_str: str) -> "PipelineConfig":
+    def from_yaml(cls, yaml_str: str) -> PipelineConfig:
         """Parse Pipeline.yaml format."""
         data = yaml.safe_load(yaml_str)
         steps = []
         for step_data in data.get("steps", []):
-            steps.append(PipelineStage(
-                stage=step_data["stage"],
-                labor=step_data["labor"],
-                task=step_data["task"],
-                verify=step_data["verify"],
-            ))
+            steps.append(
+                PipelineStage(
+                    stage=step_data["stage"],
+                    labor=step_data["labor"],
+                    task=step_data["task"],
+                    verify=step_data["verify"],
+                )
+            )
         return cls(
             name=data["name"],
             description=data.get("description", ""),
@@ -74,6 +79,7 @@ class BatchArtifactMeta:
     This is the first principle: all structured artifacts (BP, paper, book, report)
     share the same metadata contract.
     """
+
     artifact_id: str
     title: str
     target_audience: str
@@ -83,21 +89,25 @@ class BatchArtifactMeta:
     key_thesis: list[str] = field(default_factory=list)
     stage_history: list[str] = field(default_factory=list)
     audit_score: float | None = None
-    
+
     # --- Commercial Intuition Layer (ROI Metrics) ---
-    liabilities: dict[str, Any] = field(default_factory=lambda: {
-        "token_usage": 0,
-        "api_cost_usd": 0.0,
-        "compute_hours": 0.0,
-        "human_intervention_count": 0
-    })
-    equity: dict[str, Any] = field(default_factory=lambda: {
-        "realized_revenue_usd": 0.0,
-        "valuation_usd": 0.0,
-        "market_traction": {"sales_count": 0, "citations": 0}
-    })
+    liabilities: dict[str, Any] = field(
+        default_factory=lambda: {
+            "token_usage": 0,
+            "api_cost_usd": 0.0,
+            "compute_hours": 0.0,
+            "human_intervention_count": 0,
+        }
+    )
+    equity: dict[str, Any] = field(
+        default_factory=lambda: {
+            "realized_revenue_usd": 0.0,
+            "valuation_usd": 0.0,
+            "market_traction": {"sales_count": 0, "citations": 0},
+        }
+    )
     roi: float = 0.0
-    
+
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def calculate_roi(self) -> float:
@@ -132,7 +142,7 @@ class BatchArtifactMeta:
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
 
     @classmethod
-    def from_json(cls, json_str: str) -> "BatchArtifactMeta":
+    def from_json(cls, json_str: str) -> BatchArtifactMeta:
         """Deserialize from JSON string."""
         data = json.loads(json_str)
         return cls(
@@ -145,12 +155,18 @@ class BatchArtifactMeta:
             key_thesis=data.get("key_thesis", []),
             stage_history=data.get("stage_history", []),
             audit_score=data.get("audit_score"),
-            liabilities=data.get("liabilities", {
-                "token_usage": 0, "api_cost_usd": 0.0, "compute_hours": 0.0, "human_intervention_count": 0
-            }),
-            equity=data.get("equity", {
-                "realized_revenue_usd": 0.0, "valuation_usd": 0.0, "market_traction": {}
-            }),
+            liabilities=data.get(
+                "liabilities",
+                {
+                    "token_usage": 0,
+                    "api_cost_usd": 0.0,
+                    "compute_hours": 0.0,
+                    "human_intervention_count": 0,
+                },
+            ),
+            equity=data.get(
+                "equity", {"realized_revenue_usd": 0.0, "valuation_usd": 0.0, "market_traction": {}}
+            ),
             roi=data.get("roi", 0.0),
             metadata=data.get("metadata", {}),
         )
@@ -159,6 +175,7 @@ class BatchArtifactMeta:
 @dataclass
 class StageResult:
     """Result of executing a stage."""
+
     passed: bool
     stage: str
     output: str | None = None
@@ -177,12 +194,20 @@ class PipelineEngine:
     5. Update meta.json and advance
     """
 
-    def __init__(self, config: PipelineConfig, meta: BatchArtifactMeta, base_dir: str, user_id: str = "default"):
+    def __init__(
+        self,
+        config: PipelineConfig,
+        meta: BatchArtifactMeta,
+        base_dir: str,
+        user_id: str = "default",
+    ):
         self.config = config
         self.meta = meta
         self.base_dir = Path(base_dir)
         self.user_id = user_id
-        self.status = StageStatus.IN_PROGRESS if meta.status == "in_progress" else StageStatus.COMPLETED
+        self.status = (
+            StageStatus.IN_PROGRESS if meta.status == "in_progress" else StageStatus.COMPLETED
+        )
         self._stage_index = self._find_stage_index(meta.current_stage)
 
     @property
@@ -209,7 +234,7 @@ class PipelineEngine:
             next_step = self.config.steps[self._stage_index]
             self.meta.current_stage = next_step.stage
             self.meta.stage_history.append(next_step.stage)
-        
+
         await self._save_meta()
 
     async def execute_current_stage(self, **kwargs) -> StageResult:
@@ -219,7 +244,7 @@ class PipelineEngine:
 
         step = self.config.steps[self._stage_index]
         workspace = self.base_dir / self.meta.artifact_id
-        
+
         # 1. Resolve Labor from Registry
         registry = get_labor_registry()
         try:
@@ -246,11 +271,15 @@ class PipelineEngine:
         result = await labor_instance.execute(
             workspace=workspace,
             task_description=step.task,
-            meta={**self.meta.to_dict(), "stage": step.stage, **kwargs}
+            meta={**self.meta.to_dict(), "stage": step.stage, **kwargs},
         )
 
         if not result.success:
-            return StageResult(passed=False, stage=step.stage, errors=[f"Labor {step.labor} failed: {result.error}"])
+            return StageResult(
+                passed=False,
+                stage=step.stage,
+                errors=[f"Labor {step.labor} failed: {result.error}"],
+            )
 
         # Update Commercial Intuition (ROI Metrics)
         self.meta.liabilities["token_usage"] += result.token_usage
@@ -269,10 +298,10 @@ class PipelineEngine:
         meta_path.write_text(self.meta.to_json(), encoding="utf-8")
 
 
-
 # ---------------------------------------------------------------------------
 # Verification functions for each stage
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class VerificationResult:
@@ -287,7 +316,9 @@ async def verify_outline_completeness(outline: str) -> VerificationResult:
     errors = []
 
     # Good outline has ## headings under # headings
-    h1_count = sum(1 for l in lines if l.strip().startswith("# ") and not l.strip().startswith("## "))
+    h1_count = sum(
+        1 for l in lines if l.strip().startswith("# ") and not l.strip().startswith("## ")
+    )
     h2_count = sum(1 for l in lines if l.strip().startswith("## "))
     h3_count = sum(1 for l in lines if l.strip().startswith("### "))
 
@@ -317,9 +348,21 @@ async def verify_evidence_density(research: str) -> VerificationResult:
 
     # Evidence indicators
     evidence_patterns = [
-        "数据来源", "来源：", "来源:", "据", "%", "统计",
-        "引用：", "指出", "显示", "表明", "根据",
-        "et al.", "fig.", "Figure", "Table",
+        "数据来源",
+        "来源：",
+        "来源:",
+        "据",
+        "%",
+        "统计",
+        "引用：",
+        "指出",
+        "显示",
+        "表明",
+        "根据",
+        "et al.",
+        "fig.",
+        "Figure",
+        "Table",
     ]
 
     has_evidence = any(pattern.lower() in research.lower() for pattern in evidence_patterns)

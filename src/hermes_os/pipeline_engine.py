@@ -12,8 +12,8 @@ Each stage:
 
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -25,6 +25,7 @@ import yaml
 
 class StageStatus(str, Enum):
     """Status of a pipeline stage."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -34,6 +35,7 @@ class StageStatus(str, Enum):
 @dataclass
 class PipelineStage:
     """A single stage in a pipeline."""
+
     name: str
     sequence: int
     labor_type: str
@@ -65,6 +67,7 @@ class PipelineStage:
 @dataclass
 class LaborResult:
     """Result from executing a labor task."""
+
     success: bool
     output_artifact: str | None = None
     output_content: str | None = None
@@ -76,6 +79,7 @@ class LaborResult:
 @dataclass
 class PipelineDefinition:
     """A complete pipeline definition loaded from YAML."""
+
     name: str
     description: str
     version: str
@@ -115,6 +119,7 @@ class PipelineDefinition:
 @dataclass
 class PipelineWorkspace:
     """Artifact workspace for a pipeline execution."""
+
     task_id: str
     pipeline_name: str
     root_path: Path
@@ -180,6 +185,7 @@ class ContentLabor:
         then generates content using Claude Code invoke().
         """
         import time
+
         start = time.monotonic()
 
         try:
@@ -265,8 +271,9 @@ class FormatLabor:
         - epub_metadata: dict with title, author, lang for EPUB
         - pdf_options: dict with geometry, fontsize, etc.
         """
-        import time
         import subprocess
+        import time
+
         start = time.monotonic()
 
         try:
@@ -315,11 +322,15 @@ class FormatLabor:
                 pdf_opts = context.get("pdf_options", {})
                 geometry = pdf_opts.get("geometry", "a4")
                 fontsize = pdf_opts.get("fontsize", "11pt")
-                cmd.extend([
-                    f"--pdf-engine=xelatex",
-                    f"-V", f"geometry={geometry}",
-                    f"-V", f"fontsize={fontsize}",
-                ])
+                cmd.extend(
+                    [
+                        "--pdf-engine=xelatex",
+                        "-V",
+                        f"geometry={geometry}",
+                        "-V",
+                        f"fontsize={fontsize}",
+                    ]
+                )
 
             elif output_format == "html":
                 # HTML output
@@ -387,6 +398,7 @@ class FormatLabor:
 @dataclass
 class ChapterWriteResult:
     """Result of writing a single chapter."""
+
     chapter_number: int
     chapter_title: str
     success: bool
@@ -422,13 +434,14 @@ class ParallelChapterLabor:
     ) -> LaborResult:
         """Execute parallel chapter writing."""
         import time
-        from hermes_os.outline_splitter import (
-            OutlineSplitter,
-            split_write_stage,
-            ChapterWriteTask,
-            sanitize_filename,
-        )
+
         from hermes_os.claude_code_invocator import invoke
+        from hermes_os.outline_splitter import (
+            ChapterWriteTask,
+            OutlineSplitter,
+            sanitize_filename,
+            split_write_stage,
+        )
 
         start = time.monotonic()
 
@@ -538,7 +551,9 @@ class ParallelChapterLabor:
                 success=overall_success,
                 output_artifact=None,
                 output_content=None,
-                error=None if overall_success else (
+                error=None
+                if overall_success
+                else (
                     f"{failed}/{total} chapters failed (failure_ratio={failure_ratio:.2f}, "
                     f"threshold={self._failure_threshold})"
                 ),
@@ -580,11 +595,10 @@ class MergeLabor:
         prepends book header, and writes manuscript.md.
         """
         import time
+
         start = time.monotonic()
 
         try:
-            from hermes_os.outline_splitter import sanitize_filename
-
             topic = context.get("topic", "Untitled Book")
             outline = context.get("outline", "")
 
@@ -611,7 +625,7 @@ class MergeLabor:
                 num_str = basename.split("_")[0].replace("ch", "").lstrip("0")
                 chapter_num = int(num_str) if num_str.isdigit() else 0
 
-                sections.append(f"\n\n{'='*60}\n")
+                sections.append(f"\n\n{'=' * 60}\n")
                 sections.append(f"# 第{chapter_num}章\n\n")
                 sections.append(content)
 
@@ -660,6 +674,7 @@ class ReviewLabor:
     ) -> LaborResult:
         """Execute manuscript review via Claude Code invoke()."""
         import time
+
         start = time.monotonic()
 
         try:
@@ -734,8 +749,9 @@ class EpubRenderLabor:
         context: dict[str, Any],
     ) -> LaborResult:
         """Execute EPUB rendering via pandoc."""
-        import time
         import subprocess
+        import time
+
         start = time.monotonic()
 
         try:
@@ -771,8 +787,10 @@ class EpubRenderLabor:
                 [
                     "pandoc",
                     str(input_path),
-                    "-o", str(epub_path),
-                    "--epub-metadata", str(metadata_yaml),
+                    "-o",
+                    str(epub_path),
+                    "--epub-metadata",
+                    str(metadata_yaml),
                     "--toc",
                 ],
                 capture_output=True,
@@ -815,6 +833,7 @@ class PdfRenderLabor:
     def _find_pdf_engine(self) -> str | None:
         """Return the first available PDF engine or None."""
         import shutil
+
         for engine in self.PDF_ENGINES:
             if shutil.which(engine):
                 return engine
@@ -828,9 +847,9 @@ class PdfRenderLabor:
         context: dict[str, Any],
     ) -> LaborResult:
         """Execute PDF rendering via pandoc."""
-        import time
         import subprocess
-        import shutil
+        import time
+
         start = time.monotonic()
 
         try:
@@ -860,11 +879,14 @@ class PdfRenderLabor:
                 html_path = workspace.render_path / output_artifact.replace(".pdf", ".html")
                 result = subprocess.run(
                     [
-                        "pandoc", str(input_path),
-                        "-o", str(html_path),
+                        "pandoc",
+                        str(input_path),
+                        "-o",
+                        str(html_path),
                         "--standalone",
                         "--toc",
-                        "--metadata", "title=Manuscript",
+                        "--metadata",
+                        "title=Manuscript",
                     ],
                     capture_output=True,
                     text=True,
@@ -884,8 +906,10 @@ class PdfRenderLabor:
 
             # Use pandoc with discovered PDF engine
             cmd = [
-                "pandoc", str(input_path),
-                "-o", str(output_path),
+                "pandoc",
+                str(input_path),
+                "-o",
+                str(output_path),
                 f"--pdf-engine={engine}",
                 "--toc",
             ]
@@ -946,6 +970,7 @@ class BrowserLabor:
         - session_persist: Whether to persist session cookies
         """
         import time
+
         start = time.monotonic()
 
         try:
@@ -1057,6 +1082,7 @@ class BrowserLabor:
         if self._playwright is None:
             try:
                 from playwright.async_api import async_playwright
+
                 self._playwright = await async_playwright().start()
             except ImportError:
                 return None
@@ -1140,6 +1166,7 @@ class PipelineEngine:
         if self._checker_labor is None:
             # Lazy import to avoid circular dependency
             from hermes_os.qa_closed_loop import CheckerLabor
+
             self._checker_labor = CheckerLabor()
 
         stage = context.get("_current_stage")
@@ -1161,7 +1188,8 @@ class PipelineEngine:
             return False
 
         # Create a minimal spec from context
-        from hermes_os.qa_closed_loop import Spec, ContentArtifact
+        from hermes_os.qa_closed_loop import ContentArtifact, Spec
+
         spec = Spec(
             artifact_id=task_id,
             title=context.get("title", "Untitled"),
@@ -1289,9 +1317,7 @@ class PipelineEngine:
             # Run verification gate if defined
             if stage.verification_gate:
                 context["_current_stage"] = stage
-                gate_passed = await self.execute_verification_gate(
-                    task_id, stage.name, context
-                )
+                gate_passed = await self.execute_verification_gate(task_id, stage.name, context)
                 if not gate_passed:
                     # Mark stage as failed due to gate failure
                     ws.stage_statuses[stage.name] = StageStatus.FAILED.value

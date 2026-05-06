@@ -21,10 +21,10 @@ import aiosqlite
 
 
 class ApprovalStatus(str, Enum):
-    PENDING = "pending"     # 待批复
-    APPROVED = "approved"   # 已批准
+    PENDING = "pending"  # 待批复
+    APPROVED = "approved"  # 已批准
     REJECTED = "rejected"  # 已拒绝
-    EXPIRED = "expired"    # 已过期（超时未批复）
+    EXPIRED = "expired"  # 已过期（超时未批复）
 
 
 # 3 working days deadline
@@ -48,13 +48,14 @@ def _add_working_days(start: datetime, days: int) -> datetime:
 @dataclass
 class ApprovalRecord:
     """A pending or completed approval record."""
+
     approval_id: str
     task_id: str
-    doc_type: str          # DocType.value
-    user_id: str           # 提交人
-    approver_id: str       # 批复人
+    doc_type: str  # DocType.value
+    user_id: str  # 提交人
+    approver_id: str  # 批复人
     status: ApprovalStatus
-    title: str             # 文档标题（用于显示）
+    title: str  # 文档标题（用于显示）
     created_at: datetime
     deadline_at: datetime  # deadline = created_at + 3 working days
     reminder_at: datetime  # reminder = deadline - 1 working day

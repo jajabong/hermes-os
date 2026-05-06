@@ -11,25 +11,25 @@ Error Attribution Matrix:
   HANG_ERROR (timeout_sec exceeded) → Force kill + mark HANG, trigger escalation
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from datetime import datetime, UTC
+
+import pytest
 
 from hermes_os.guardian_controller import (
-    GuardianController,
-    ErrorType,
-    ErrorAttribution,
-    EscalationDecision,
     CheckpointData,
+    ErrorAttribution,
+    ErrorType,
+    EscalationDecision,
     GuardianConfig,
+    GuardianController,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def temp_checkpoint_dir() -> Path:
@@ -53,6 +53,7 @@ def guardian(temp_checkpoint_dir: Path) -> GuardianController:
 # ErrorType tests
 # ---------------------------------------------------------------------------
 
+
 class TestErrorType:
     def test_error_type_values(self) -> None:
         assert hasattr(ErrorType, "TRANSIENT")
@@ -70,6 +71,7 @@ class TestErrorType:
 # ---------------------------------------------------------------------------
 # ErrorAttribution tests
 # ---------------------------------------------------------------------------
+
 
 class TestErrorAttribution:
     def test_transient_from_network_error(self) -> None:
@@ -114,6 +116,7 @@ class TestErrorAttribution:
 # CheckpointData tests
 # ---------------------------------------------------------------------------
 
+
 class TestCheckpointData:
     def test_checkpoint_structure(self) -> None:
         cp = CheckpointData(
@@ -149,9 +152,12 @@ class TestCheckpointData:
 # GuardianController — Checkpoint Engine tests
 # ---------------------------------------------------------------------------
 
+
 class TestCheckpointEngine:
     @pytest.mark.asyncio
-    async def test_save_checkpoint_creates_file(self, guardian: GuardianController, temp_checkpoint_dir: Path) -> None:
+    async def test_save_checkpoint_creates_file(
+        self, guardian: GuardianController, temp_checkpoint_dir: Path
+    ) -> None:
         cp = CheckpointData(
             task_id="t-checkpoint-001",
             stage="research",
@@ -180,12 +186,16 @@ class TestCheckpointEngine:
         assert loaded.completed_stages == ["research", "outline"]
 
     @pytest.mark.asyncio
-    async def test_load_checkpoint_returns_none_for_missing(self, guardian: GuardianController) -> None:
+    async def test_load_checkpoint_returns_none_for_missing(
+        self, guardian: GuardianController
+    ) -> None:
         result = await guardian.load_checkpoint("nonexistent-task")
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_rescue_in_progress_tasks(self, guardian: GuardianController, temp_checkpoint_dir: Path) -> None:
+    async def test_rescue_in_progress_tasks(
+        self, guardian: GuardianController, temp_checkpoint_dir: Path
+    ) -> None:
         # Create a checkpoint with old timestamp (simulating crash)
         cp = CheckpointData(
             task_id="t-rescue-001",
@@ -221,6 +231,7 @@ class TestCheckpointEngine:
 # GuardianController — Error Attribution Engine tests
 # ---------------------------------------------------------------------------
 
+
 class TestErrorAttributionEngine:
     @pytest.mark.asyncio
     async def test_classify_network_error(self, guardian: GuardianController) -> None:
@@ -239,7 +250,9 @@ class TestErrorAttributionEngine:
 
     @pytest.mark.asyncio
     async def test_classify_hallucination_error(self, guardian: GuardianController) -> None:
-        attr = await guardian._classify_error("OutputValidationError: model produced malformed output")
+        attr = await guardian._classify_error(
+            "OutputValidationError: model produced malformed output"
+        )
         assert attr.error_type == ErrorType.LOGICAL
 
     @pytest.mark.asyncio
@@ -251,6 +264,7 @@ class TestErrorAttributionEngine:
 # ---------------------------------------------------------------------------
 # GuardianController — Retry with Backoff tests
 # ---------------------------------------------------------------------------
+
 
 class TestRetryWithBackoff:
     @pytest.mark.asyncio
@@ -324,10 +338,13 @@ class TestRetryWithBackoff:
 # GuardianController — Escalation tests
 # ---------------------------------------------------------------------------
 
+
 class TestEscalation:
     @pytest.mark.asyncio
     async def test_escalate_task_sends_card(self, guardian: GuardianController) -> None:
-        guardian._jarvis = pytest.importorskip("hermes_os.jarvis_interface", reason="jarvis not available")
+        guardian._jarvis = pytest.importorskip(
+            "hermes_os.jarvis_interface", reason="jarvis not available"
+        )
         # Just verify it doesn't raise — actual card sending tested separately
         cp = CheckpointData(
             task_id="t-escalate-001",
@@ -342,7 +359,9 @@ class TestEscalation:
         # Would need mock jarvis to verify card content
 
     @pytest.mark.asyncio
-    async def test_make_escalation_decision_exhausted_retry(self, guardian: GuardianController) -> None:
+    async def test_make_escalation_decision_exhausted_retry(
+        self, guardian: GuardianController
+    ) -> None:
         cp = CheckpointData(
             task_id="t-esc-decision-001",
             stage="write_chapters",
@@ -370,7 +389,9 @@ class TestEscalation:
         assert decision == EscalationDecision.ESCALATE
 
     @pytest.mark.asyncio
-    async def test_make_escalation_decision_transient_retry(self, guardian: GuardianController) -> None:
+    async def test_make_escalation_decision_transient_retry(
+        self, guardian: GuardianController
+    ) -> None:
         cp = CheckpointData(
             task_id="t-esc-decision-003",
             stage="research",
@@ -384,7 +405,9 @@ class TestEscalation:
         assert decision == EscalationDecision.RETRY
 
     @pytest.mark.asyncio
-    async def test_make_escalation_decision_logical_error(self, guardian: GuardianController) -> None:
+    async def test_make_escalation_decision_logical_error(
+        self, guardian: GuardianController
+    ) -> None:
         cp = CheckpointData(
             task_id="t-esc-decision-004",
             stage="outline",
@@ -401,6 +424,7 @@ class TestEscalation:
 # ---------------------------------------------------------------------------
 # GuardianController — Guarded Invocation tests
 # ---------------------------------------------------------------------------
+
 
 class TestGuardedInvocation:
     @pytest.mark.asyncio
@@ -439,7 +463,9 @@ class TestGuardedInvocation:
         assert result.decision == EscalationDecision.ESCALATE
 
     @pytest.mark.asyncio
-    async def test_handle_invocation_error_sets_retry_count(self, guardian: GuardianController) -> None:
+    async def test_handle_invocation_error_sets_retry_count(
+        self, guardian: GuardianController
+    ) -> None:
         cp = CheckpointData(
             task_id="t-handle-003",
             stage="research",

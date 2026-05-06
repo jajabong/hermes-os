@@ -1,21 +1,21 @@
 """Tests for GoalTracker — deep multi-session goal understanding."""
 
-import pytest
 import os
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+
+import pytest
 
 from hermes_os.goal_tracker import (
-    GoalTracker,
-    GoalState,
-    GoalPhase,
-    GoalPattern,
     _GOAL_PHASES,
+    GoalPattern,
+    GoalState,
+    GoalTracker,
 )
-
 
 # ---------------------------------------------------------------------------
 # GoalPattern and _GOAL_PHASES tests
 # ---------------------------------------------------------------------------
+
 
 class TestGoalPattern:
     def test_pattern_values(self) -> None:
@@ -40,6 +40,7 @@ class TestGoalPattern:
 # ---------------------------------------------------------------------------
 # GoalState tests
 # ---------------------------------------------------------------------------
+
 
 class TestGoalState:
     def test_goal_state_properties(self) -> None:
@@ -108,6 +109,7 @@ class TestGoalState:
 # ---------------------------------------------------------------------------
 # GoalTracker integration tests (DB-backed)
 # ---------------------------------------------------------------------------
+
 
 class TestGoalTrackerCreate:
     @pytest.fixture
@@ -250,7 +252,9 @@ class TestGoalTrackerGetActive:
     async def test_get_active_goal_returns_most_recent(self, tracker: GoalTracker) -> None:
         await tracker.initialize()
         await tracker.create_goal(user_id="alice", description="旧目标", initial_intent="query")
-        newer = await tracker.create_goal(user_id="alice", description="新目标", initial_intent="query")
+        newer = await tracker.create_goal(
+            user_id="alice", description="新目标", initial_intent="query"
+        )
 
         active = await tracker.get_active_goal("alice")
 
@@ -261,7 +265,9 @@ class TestGoalTrackerGetActive:
     @pytest.mark.asyncio
     async def test_get_active_goal_excludes_completed(self, tracker: GoalTracker) -> None:
         await tracker.initialize()
-        goal = await tracker.create_goal(user_id="alice", description="完成它", initial_intent="query")
+        goal = await tracker.create_goal(
+            user_id="alice", description="完成它", initial_intent="query"
+        )
         await tracker.complete_goal(goal.goal_id)
         await tracker.create_goal(user_id="alice", description="新目标", initial_intent="query")
 

@@ -1,16 +1,17 @@
 """Tests for GlobalWikiIndexer — indexes ~/.hermes/global_wiki/."""
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 
-from hermes_os.global_wiki_indexer import GlobalWikiIndexer
+import pytest
 
+from hermes_os.global_wiki_indexer import GlobalWikiIndexer
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 class TempGlobalWiki:
     """Creates a temporary global_wiki with test content."""
@@ -35,9 +36,7 @@ class TempGlobalWiki:
         (wiki_dir / "项目" / "test_project.md").write_text(
             "这是一个测试项目，内容关于项目管理。", encoding="utf-8"
         )
-        (wiki_dir / "概念" / "another.md").write_text(
-            "另一个概念文件。", encoding="utf-8"
-        )
+        (wiki_dir / "概念" / "another.md").write_text("另一个概念文件。", encoding="utf-8")
 
         # Write MEMORY.md
         (wiki / "MEMORY.md").write_text("# Global Memory", encoding="utf-8")
@@ -59,10 +58,12 @@ def temp_gwiki() -> Path:
 # GlobalWikiIndexer tests
 # ---------------------------------------------------------------------------
 
+
 class TestGlobalWikiIndexerInit:
     def test_default_base_path(self) -> None:
         idx = GlobalWikiIndexer()
         from hermes_os.global_wiki_indexer import _GLOBAL_WIKI_BASE
+
         assert idx._base == _GLOBAL_WIKI_BASE
 
     def test_custom_base_path(self, temp_gwiki: Path) -> None:

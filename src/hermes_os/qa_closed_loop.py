@@ -6,7 +6,6 @@ Ensures every artifact has a validated spec before ContentLabor begins.
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -66,15 +65,14 @@ class SpecValidator:
         # Check: style must be valid
         valid_styles = {s.value for s in SpecStyle}
         if spec.style not in valid_styles:
-            errors.append(
-                f"invalid style '{spec.style}'. Must be one of: {valid_styles}"
-            )
+            errors.append(f"invalid style '{spec.style}'. Must be one of: {valid_styles}")
 
         return ValidationResult(passed=len(errors) == 0, errors=errors)
 
 
 class SpecNotApprovedError(Exception):
     """Raised when ContentArtifact.write_content is called before spec is approved."""
+
     pass
 
 
@@ -178,6 +176,7 @@ class SpecGate:
 
 class CheckerResult(ValidationResult):
     """Result from CheckerLabor verification."""
+
     hallucination_score: float = 1.0
 
 
@@ -262,7 +261,7 @@ class CheckerLabor:
 
     def _count_chinese_words(self, text: str) -> int:
         """Count Chinese words. Each Chinese character counts as one word."""
-        return sum(1 for c in text if '一' <= c <= '鿿')
+        return sum(1 for c in text if "一" <= c <= "鿿")
 
     def _check_word_count(self, content: str, spec: Spec) -> list[str]:
         """Check if content meets word count target."""
@@ -270,7 +269,7 @@ class CheckerLabor:
         import re
 
         # Count Chinese characters (each Chinese char counts as 1 word)
-        chinese_chars = len(re.findall(r'[一-鿿]', content))
+        chinese_chars = len(re.findall(r"[一-鿿]", content))
         # Count English words
         english_words = len(content.split())
         # Total word count (each Chinese char = 1 word)
@@ -354,7 +353,7 @@ Only fail (passed=false) if you find significant factual issues, not minor styli
             import re
 
             # Extract JSON from response
-            json_match = re.search(r'\{[^{}]*\}', result.stdout, re.DOTALL)
+            json_match = re.search(r"\{[^{}]*\}", result.stdout, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
                 return {
@@ -393,6 +392,7 @@ Only fail (passed=false) if you find significant factual issues, not minor styli
 @dataclass
 class DiffResult:
     """Result of computing diff between original and edited content."""
+
     added_lines: int
     removed_lines: int
     diff_text: str
@@ -401,6 +401,7 @@ class DiffResult:
 @dataclass
 class PreferenceRecord:
     """A learned preference from user feedback."""
+
     artifact_id: str
     pattern_type: str  # "expansion", "style_change", "keyword_addition"
     keywords: list[str] = field(default_factory=list)
@@ -429,11 +430,13 @@ class DiffLearning:
         original_lines = original.splitlines()
         edited_lines = edited.splitlines()
 
-        diff = list(difflib.unified_diff(
-            original_lines,
-            edited_lines,
-            lineterm="",
-        ))
+        diff = list(
+            difflib.unified_diff(
+                original_lines,
+                edited_lines,
+                lineterm="",
+            )
+        )
 
         added = sum(1 for line in diff if line.startswith("+") and not line.startswith("+++"))
         removed = sum(1 for line in diff if line.startswith("-") and not line.startswith("---"))
@@ -506,8 +509,9 @@ class DiffLearning:
         """Extract keywords that were added or changed."""
         # Simple heuristic: find words in edited that aren't in original
         import re
-        original_words = set(re.findall(r'[\w]+', original))
-        edited_words = re.findall(r'[\w]+', edited)
+
+        original_words = set(re.findall(r"[\w]+", original))
+        edited_words = re.findall(r"[\w]+", edited)
 
         added = [w for w in edited_words if w not in original_words and len(w) > 1]
         return list(set(added))[:5]  # Return up to 5 keywords
@@ -529,6 +533,7 @@ class DiffLearning:
     def _get_timestamp(self) -> str:
         """Get current timestamp."""
         from datetime import datetime
+
         return datetime.now().isoformat()
 
     async def _persist_preferences(self) -> None:

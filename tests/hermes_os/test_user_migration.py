@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import json
-import sqlite3
 import asyncio
+import sqlite3
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Tests: ShardManager with existing single DB
 # ---------------------------------------------------------------------------
+
 
 def test_shard_manager_existing_db_paths(tmp_path: Path) -> None:
     """all_db_paths() should return paths for all existing shard DBs."""
@@ -47,12 +45,12 @@ def test_shard_manager_single_db_not_in_shard_structure(tmp_path: Path) -> None:
 # Tests: migration schema mapping
 # ---------------------------------------------------------------------------
 
+
 def test_single_db_has_expected_tables() -> None:
     """hermes_os.db should have: users, messages, sessions, conversation_states, pipeline_milestones."""
     # These tests verify the source DB schema — they read from the actual DB path.
     # When the source DB doesn't exist at the expected path (e.g., after migration
     # to shards), these tests skip. They are not testing migration logic.
-    import os
     src_path = Path("hermes_os.db")
     if not src_path.exists():
         pytest.skip("hermes_os.db not present (may have been migrated)")
@@ -104,9 +102,10 @@ def test_single_db_messages_table_schema() -> None:
 # Tests: MigrationRunner
 # ---------------------------------------------------------------------------
 
+
 def test_migration_runner_migrates_users_table(tmp_path: Path) -> None:
     """Migrate users from single DB to sharded DBs."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     # Create source single DB
     src_db = tmp_path / "hermes_os.db"
@@ -146,7 +145,7 @@ def test_migration_runner_migrates_users_table(tmp_path: Path) -> None:
 
 def test_migration_runner_migrates_messages(tmp_path: Path) -> None:
     """Messages should be migrated to the correct user's shard DB."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     src_db = tmp_path / "hermes_os.db"
     conn = sqlite3.connect(str(src_db))
@@ -191,7 +190,7 @@ def test_migration_runner_migrates_messages(tmp_path: Path) -> None:
 
 def test_migration_runner_wal_mode_enforced(tmp_path: Path) -> None:
     """Migrated shard DB should have WAL journal mode."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     src_db = tmp_path / "hermes_os.db"
     conn = sqlite3.connect(str(src_db))
@@ -227,9 +226,10 @@ def test_migration_runner_wal_mode_enforced(tmp_path: Path) -> None:
 # Tests: ShardedStorage with existing users
 # ---------------------------------------------------------------------------
 
+
 def test_get_db_returns_sharded_connection(tmp_path: Path) -> None:
     """_get_db_for(user_id) should return a connection to that user's shard DB."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)

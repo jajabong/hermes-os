@@ -1,12 +1,12 @@
 """Tests for JarvisInterface — unified outbound communication."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from hermes_os.emotion_engine import EmotionState
 from hermes_os.emotion_types import TonePreference
 from hermes_os.jarvis_interface import JarvisInterface
-from hermes_os.personality_tuner import PersonalityTuner
 
 
 class TestJarvisInterfaceCardWithNl:
@@ -147,6 +147,7 @@ class TestBuildCard:
 # PersonalityTuner integration tests
 # ---------------------------------------------------------------------------
 
+
 class TestPersonalityTunerIntegration:
     """Tests for PersonalityTuner integration in JarvisInterface."""
 
@@ -197,7 +198,7 @@ class TestPersonalityTunerIntegration:
         # FRUSTRATED emotion should add encouraging phrase
         assert "数据分析" in message
         assert "数据源不可达" in message
-        assert ("一起" in message or "加油" in message or "别担心" in message or "没关系" in message)
+        assert "一起" in message or "加油" in message or "别担心" in message or "没关系" in message
 
     @pytest.mark.asyncio
     async def test_send_progress_shortens_when_stressed(self) -> None:

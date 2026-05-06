@@ -1,14 +1,13 @@
 """Tests for GeneEngine — Oct-OS inspired evolution engine."""
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
+
+import pytest
 
 from hermes_os.gene_engine import (
     GeneEngine,
-    AntibodyGene,
-    SuccessfulGene,
 )
 
 
@@ -97,7 +96,9 @@ class TestGenePool:
         best = gene_engine.get_best_strategy("review")
         assert best.context_type == "review"
 
-    def test_get_best_strategy_returns_none_for_unknown_context(self, gene_engine: GeneEngine) -> None:
+    def test_get_best_strategy_returns_none_for_unknown_context(
+        self, gene_engine: GeneEngine
+    ) -> None:
         best = gene_engine.get_best_strategy("unknown_context")
         assert best is None
 

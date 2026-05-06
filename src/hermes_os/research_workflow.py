@@ -20,19 +20,20 @@ from typing import Any
 
 from hermes_os.brain_indexer import BrainIndexer
 from hermes_os.hermes_tool_registry import get_tool_registry
-from hermes_os.workflow_engine import WorkflowEngine
 
 
 class IntelligenceSource(str, Enum):
     """Sources for intelligence gathering."""
-    FEISHU_DOCS = "feishu_docs"       # 飞书文档
-    GITHUB = "github"                 # GitHub (PRs, issues, repos)
-    WEB_SEARCH = "web_search"        # 网上情报搜索
-    BRAIN_WIKI = "brain_wiki"        # 用户脑目录 wiki
+
+    FEISHU_DOCS = "feishu_docs"  # 飞书文档
+    GITHUB = "github"  # GitHub (PRs, issues, repos)
+    WEB_SEARCH = "web_search"  # 网上情报搜索
+    BRAIN_WIKI = "brain_wiki"  # 用户脑目录 wiki
 
 
 class RiskFlag(str, Enum):
     """Risk severity levels."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -42,6 +43,7 @@ class RiskFlag(str, Enum):
 @dataclass
 class IntelligenceResult:
     """Result of parallel intelligence gathering."""
+
     query: str
     source_count: int
     findings: list[str]
@@ -116,10 +118,7 @@ class ResearchWorkflowEngine:
         target_sources = sources or self._sources
 
         # Launch all source calls concurrently
-        tasks = [
-            self._call_source(source, query, user_id=user_id)
-            for source in target_sources
-        ]
+        tasks = [self._call_source(source, query, user_id=user_id) for source in target_sources]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_findings: list[str] = []
@@ -205,12 +204,16 @@ class ResearchWorkflowEngine:
             content = f"❌ 情报收集失败: {result.error}"
         else:
             findings_lines = "\n".join(f"• {f}" for f in result.findings[:10])
-            risks_lines = "\n".join(
-                f"⚠️ {r[0]} [{r[1].value}]" for r in result.risks
-            ) if result.risks else "✅ 无明显风险"
-            rec_lines = "\n".join(
-                f"📋 {rec}" for rec in result.recommendations
-            ) if result.recommendations else ""
+            risks_lines = (
+                "\n".join(f"⚠️ {r[0]} [{r[1].value}]" for r in result.risks)
+                if result.risks
+                else "✅ 无明显风险"
+            )
+            rec_lines = (
+                "\n".join(f"📋 {rec}" for rec in result.recommendations)
+                if result.recommendations
+                else ""
+            )
 
             content_parts = [
                 f"**来源数**: {result.source_count}",
@@ -296,10 +299,7 @@ class ResearchWorkflowEngine:
         try:
             results = await self._brain.search_wiki(user_id, keyword=query)
             return {
-                "findings": [
-                    f"{r['category']}/{r['file']}: {r['snippet']}"
-                    for r in results[:5]
-                ]
+                "findings": [f"{r['category']}/{r['file']}: {r['snippet']}" for r in results[:5]]
             }
         except Exception:
             return {"findings": []}

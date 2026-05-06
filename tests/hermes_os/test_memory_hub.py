@@ -2,26 +2,24 @@
 
 from __future__ import annotations
 
-import asyncio
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from hermes_os.memory_hub import (
-    MemoryHub,
     ContextMemory,
     IdentityMemory,
+    KnowledgeMemory,
+    MemoryHub,
     PreferencesMemory,
     RecentContextMemory,
-    KnowledgeMemory,
 )
-
 
 # ---------------------------------------------------------------------------
 # Layer unit tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_identity_memory_read_write(tmp_path: Path) -> None:
@@ -55,11 +53,13 @@ async def test_preferences_memory_read_write(tmp_path: Path) -> None:
     brain_dir.mkdir(parents=True)
 
     prefs = PreferencesMemory(user_id=uid, base_path=tmp_path)
-    await prefs.save({
-        "communication_style": "casual",
-        "detail_level": "high",
-        "language": "zh",
-    })
+    await prefs.save(
+        {
+            "communication_style": "casual",
+            "detail_level": "high",
+            "language": "zh",
+        }
+    )
 
     loaded = await prefs.load()
     assert loaded["communication_style"] == "casual"
@@ -92,9 +92,9 @@ async def test_preferences_memory_default_values() -> None:
 async def test_recent_context_search_delegates_to_mem0() -> None:
     """RecentContextMemory.search() should delegate to MemoryRouter."""
     mock_router = MagicMock()
-    mock_router.search = AsyncMock(return_value=[
-        {"text": "用户上次说要理财", "metadata": {"type": "preference"}}
-    ])
+    mock_router.search = AsyncMock(
+        return_value=[{"text": "用户上次说要理财", "metadata": {"type": "preference"}}]
+    )
 
     recent = RecentContextMemory(memory_router=mock_router)
     results = await recent.search("理财", limit=3)
@@ -128,9 +128,9 @@ async def test_recent_context_store_delegates_to_mem0() -> None:
 async def test_knowledge_memory_search_delegates_to_brain_indexer() -> None:
     """KnowledgeMemory.search() should delegate to BrainIndexer."""
     mock_indexer = MagicMock()
-    mock_indexer.search_wiki = AsyncMock(return_value=[
-        {"category": "项目", "file": "AI研究", "snippet": "...关于AI的分析..."}
-    ])
+    mock_indexer.search_wiki = AsyncMock(
+        return_value=[{"category": "项目", "file": "AI研究", "snippet": "...关于AI的分析..."}]
+    )
 
     knowledge = KnowledgeMemory(brain_indexer=mock_indexer)
     results = await knowledge.search("AI", limit=5)
@@ -154,6 +154,7 @@ async def test_knowledge_memory_search_returns_empty_when_no_results() -> None:
 # ---------------------------------------------------------------------------
 # MemoryHub integration tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_memory_hub_initializes_all_layers(tmp_path: Path) -> None:

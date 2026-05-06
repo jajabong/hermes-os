@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from hermes_os.unified_router import (
-    UnifiedRouter,
-    RouteResult,
     INTENT_AGENT_MAP,
+    RouteResult,
+    UnifiedRouter,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_gateway_event() -> MagicMock:
@@ -59,10 +58,13 @@ def mock_context_memory() -> MagicMock:
 # INTENT_AGENT_MAP tests
 # ---------------------------------------------------------------------------
 
+
 def test_intent_agent_map_has_required_intents() -> None:
     """INTENT_AGENT_MAP should cover all major intent types."""
     required = {"code", "research", "fix_bug", "deploy", "write_book"}
-    assert required.issubset(INTENT_AGENT_MAP.keys()), f"Missing: {required - INTENT_AGENT_MAP.keys()}"
+    assert required.issubset(INTENT_AGENT_MAP.keys()), (
+        f"Missing: {required - INTENT_AGENT_MAP.keys()}"
+    )
 
 
 def test_intent_agent_map_values_are_strings() -> None:
@@ -75,6 +77,7 @@ def test_intent_agent_map_values_are_strings() -> None:
 # ---------------------------------------------------------------------------
 # RouteResult tests
 # ---------------------------------------------------------------------------
+
 
 def test_route_result_defaults() -> None:
     """RouteResult should have sensible defaults."""
@@ -102,6 +105,7 @@ def test_route_result_full() -> None:
 # ---------------------------------------------------------------------------
 # UnifiedRouter unit tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_classify_intent_investment() -> None:
@@ -163,6 +167,7 @@ async def test_match_agent_for_unknown_intent() -> None:
 # Integration tests (mocked external dependencies)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_route_full_pipeline(
     mock_gateway_event: MagicMock,
@@ -184,6 +189,10 @@ async def test_route_full_pipeline(
     mock_hub.get_context = AsyncMock(return_value=mock_context_memory)
     mock_hub.initialize = AsyncMock()
     mock_hub.store = AsyncMock()
+    mock_hub.get_preferences = AsyncMock(
+        return_value={"communication_style": "brief", "language": "zh"}
+    )
+    mock_hub.get_identity = AsyncMock(return_value={"name": "张三", "role": "user"})
     router._memory_hub_factory = MagicMock(return_value=mock_hub)
 
     # Mock ChiefAgent for intent parsing
@@ -228,6 +237,10 @@ async def test_route_unknown_intent_falls_back_to_chief(
     mock_hub = MagicMock()
     mock_hub.get_context = AsyncMock(return_value=mock_context_memory)
     mock_hub.initialize = AsyncMock()
+    mock_hub.get_preferences = AsyncMock(
+        return_value={"communication_style": "brief", "language": "zh"}
+    )
+    mock_hub.get_identity = AsyncMock(return_value={"name": "张三", "role": "user"})
     router._memory_hub_factory = MagicMock(return_value=mock_hub)
 
     # Use a message that triggers "unknown" classification (no keywords)
@@ -272,6 +285,10 @@ async def test_route_stores_response_in_memory(
     mock_hub.get_context = AsyncMock(return_value=mock_context_memory)
     mock_hub.initialize = AsyncMock()
     mock_hub.store = AsyncMock()
+    mock_hub.get_preferences = AsyncMock(
+        return_value={"communication_style": "brief", "language": "zh"}
+    )
+    mock_hub.get_identity = AsyncMock(return_value={"name": "张三", "role": "user"})
     router._memory_hub_factory = MagicMock(return_value=mock_hub)
 
     router._chief = MagicMock()
@@ -315,6 +332,10 @@ async def test_route_returns_route_result(
     mock_hub.get_context = AsyncMock(return_value=mock_context_memory)
     mock_hub.initialize = AsyncMock()
     mock_hub.store = AsyncMock()
+    mock_hub.get_preferences = AsyncMock(
+        return_value={"communication_style": "brief", "language": "zh"}
+    )
+    mock_hub.get_identity = AsyncMock(return_value={"name": "张三", "role": "user"})
     router._memory_hub_factory = MagicMock(return_value=mock_hub)
 
     router._chief = MagicMock()
@@ -333,3 +354,73 @@ async def test_route_returns_route_result(
 
     assert isinstance(result, RouteResult)
     assert result.agent_name == "InvestmentAgent"
+
+
+@pytest.mark.asyncio
+async def test_route_assembles_persona_block_and_passes_to_agent(
+    mock_gateway_event: MagicMock,
+    mock_user: MagicMock,
+) -> None:
+    """route() should assemble persona_block from preferences and pass it to agent."""
+    router = UnifiedRouter()
+
+    router._registry = MagicMock()
+    router._registry.upsert_from_pairing = AsyncMock(return_value=mock_user)
+
+    mock_session = MagicMock()
+    mock_session.session_id = "sess_persona"
+    router._sessions = MagicMock()
+    router._sessions.get_or_create = AsyncMock(return_value=mock_session)
+
+    # Mock MemoryHub with known preferences
+    mock_ctx = MagicMock()
+    mock_ctx.identity = {"name": "陆总", "role": "executive"}
+    mock_ctx.preferences = {
+        "communication_style": "brief",
+        "detail_level": "medium",
+        "tone": "direct",
+    }
+
+    mock_hub = MagicMock()
+    mock_hub.get_context = AsyncMock(return_value=mock_ctx)
+    mock_hub.initialize = AsyncMock()
+    mock_hub.get_preferences = AsyncMock(
+        return_value={
+            "communication_style": "brief",
+            "detail_level": "medium",
+            "tone": "direct",
+        }
+    )
+    mock_hub.get_identity = AsyncMock(return_value={"name": "陆总", "role": "executive"})
+    mock_hub.store = AsyncMock()
+    router._memory_hub_factory = MagicMock(return_value=mock_hub)
+
+    # Capture the request passed to agent.invoke
+    captured_request = None
+
+    class MockAgent:
+        async def invoke(self, request, context):
+            nonlocal captured_request
+            captured_request = request
+            result = MagicMock()
+            result.success = True
+            result.output = "简洁回复"
+            return result
+
+    router._agent_registry = MagicMock()
+    router._agent_registry.get_agent = MagicMock(return_value=MockAgent())
+
+    # Message triggers "investment" intent
+    result = await router.route(mock_gateway_event)
+
+    # Verify persona_block was assembled and passed in context
+    assert captured_request is not None
+    assert "persona_block" in captured_request.context
+    persona = captured_request.context["persona_block"]
+    assert persona.communication_style == "brief"
+    assert persona.tone == "direct"
+    # Verify render() produces valid XML with owner name
+    rendered = persona.render()
+    assert "<assistant_persona>" in rendered
+    assert "陆总" in rendered
+    assert "简洁" in rendered

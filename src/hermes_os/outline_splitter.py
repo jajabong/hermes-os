@@ -18,6 +18,7 @@ from typing import Any
 @dataclass
 class Chapter:
     """A single chapter extracted from an outline."""
+
     number: int
     title: str
     section: str = ""
@@ -37,6 +38,7 @@ class Chapter:
 @dataclass
 class ChapterWriteTask:
     """A single chapter writing task for TaskScheduler."""
+
     task_id: str
     chapter_number: int
     chapter_title: str
@@ -47,6 +49,7 @@ class ChapterWriteTask:
 @dataclass
 class SplitResult:
     """Result of splitting an outline into chapters."""
+
     source_outline: str
     chapters: list[Chapter]
     total_words_estimate: int
@@ -109,7 +112,9 @@ class OutlineSplitter:
             if section_match:
                 heading = section_match.group(2).strip()
                 # Skip chapter-level headings, keep part/section headings
-                if "第" in heading and ("部分" in heading or "Part" in heading or "附录" in heading):
+                if "第" in heading and (
+                    "部分" in heading or "Part" in heading or "附录" in heading
+                ):
                     current_section = heading
                 continue
 

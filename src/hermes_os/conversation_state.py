@@ -17,7 +17,6 @@ import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any
 
 from hermes_os.event_loop import Event, EventType, get_event_bus
 from hermes_os.storage import Storage

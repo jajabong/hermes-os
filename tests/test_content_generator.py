@@ -1,7 +1,8 @@
 """Tests for ContentGeneratorAgent — generates documents from key points."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from hermes_os.content_generator import (
     ContentGeneratorAgent,
@@ -9,10 +10,10 @@ from hermes_os.content_generator import (
     GenerationResult,
 )
 
-
 # ---------------------------------------------------------------------------
 # ContentType tests
 # ---------------------------------------------------------------------------
+
 
 class TestContentType:
     def test_content_types(self) -> None:
@@ -29,6 +30,7 @@ class TestContentType:
 # ---------------------------------------------------------------------------
 # GenerationResult tests
 # ---------------------------------------------------------------------------
+
 
 class TestGenerationResult:
     def test_success_result(self) -> None:
@@ -61,6 +63,7 @@ class TestGenerationResult:
 # ContentGeneratorAgent tests
 # ---------------------------------------------------------------------------
 
+
 class TestContentGeneratorAgentInit:
     def test_init_with_defaults(self) -> None:
         """ContentGeneratorAgent initializes with default model."""
@@ -75,15 +78,21 @@ class TestContentGeneratorAgentGenerate:
         """generate() produces industry report content."""
         agent = ContentGeneratorAgent()
 
-        with patch.object(agent, "_call_llm", new=AsyncMock(return_value={
-            "title": "一季度经济形势分析",
-            "sections": {
-                "overview": "本季度GDP同比增长5.3%...",
-                "trends": "数字经济、新能源汽车表现强劲",
-                "risks": "房地产持续低迷、外部需求疲软",
-            },
-            "conclusion": "建议加大对数字经济支持力度",
-        })):
+        with patch.object(
+            agent,
+            "_call_llm",
+            new=AsyncMock(
+                return_value={
+                    "title": "一季度经济形势分析",
+                    "sections": {
+                        "overview": "本季度GDP同比增长5.3%...",
+                        "trends": "数字经济、新能源汽车表现强劲",
+                        "risks": "房地产持续低迷、外部需求疲软",
+                    },
+                    "conclusion": "建议加大对数字经济支持力度",
+                }
+            ),
+        ):
             result = await agent.generate(
                 key_points="分析一季度经济形势，重点关注数字经济和新能源",
                 content_type=ContentType.INDUSTRY_REPORT,
@@ -99,16 +108,22 @@ class TestContentGeneratorAgentGenerate:
         """generate() for investment analysis includes risk and options."""
         agent = ContentGeneratorAgent()
 
-        with patch.object(agent, "_call_llm", new=AsyncMock(return_value={
-            "title": "供应商方案对比分析",
-            "sections": {
-                "option_a": "成本最低，技术成熟度中等",
-                "option_b": "技术最优，成本较高",
-                "option_c": "综合性价比最高",
-            },
-            "risks": "A供应商交付风险、B成本超支",
-            "recommendation": "推荐C方案",
-        })):
+        with patch.object(
+            agent,
+            "_call_llm",
+            new=AsyncMock(
+                return_value={
+                    "title": "供应商方案对比分析",
+                    "sections": {
+                        "option_a": "成本最低，技术成熟度中等",
+                        "option_b": "技术最优，成本较高",
+                        "option_c": "综合性价比最高",
+                    },
+                    "risks": "A供应商交付风险、B成本超支",
+                    "recommendation": "推荐C方案",
+                }
+            ),
+        ):
             result = await agent.generate(
                 key_points="对比三家供应商方案，给出投资建议",
                 content_type=ContentType.INVESTMENT_ANALYSIS,
@@ -123,14 +138,20 @@ class TestContentGeneratorAgentGenerate:
         """generate() produces structured work summary."""
         agent = ContentGeneratorAgent()
 
-        with patch.object(agent, "_call_llm", new=AsyncMock(return_value={
-            "title": "季度工作总结",
-            "sections": {
-                "accomplishments": "完成项目A、B两个模块开发",
-                "challenges": "人员紧张，部分延期",
-                "next_steps": "Q2重点推进C项目",
-            },
-        })):
+        with patch.object(
+            agent,
+            "_call_llm",
+            new=AsyncMock(
+                return_value={
+                    "title": "季度工作总结",
+                    "sections": {
+                        "accomplishments": "完成项目A、B两个模块开发",
+                        "challenges": "人员紧张，部分延期",
+                        "next_steps": "Q2重点推进C项目",
+                    },
+                }
+            ),
+        ):
             result = await agent.generate(
                 key_points="写一季度工作总结，包含完成情况、问题、下一步",
                 content_type=ContentType.WORK_SUMMARY,
@@ -145,13 +166,19 @@ class TestContentGeneratorAgentGenerate:
         """generate() produces meeting minutes format."""
         agent = ContentGeneratorAgent()
 
-        with patch.object(agent, "_call_llm", new=AsyncMock(return_value={
-            "title": "项目评审会议纪要",
-            "date": "2026年4月30日",
-            "attendees": "张三、李四、王五",
-            "decisions": "1. 同意进入测试阶段 2. 5月10日上线",
-            "action_items": "张三：完成联调；李四：准备演示",
-        })):
+        with patch.object(
+            agent,
+            "_call_llm",
+            new=AsyncMock(
+                return_value={
+                    "title": "项目评审会议纪要",
+                    "date": "2026年4月30日",
+                    "attendees": "张三、李四、王五",
+                    "decisions": "1. 同意进入测试阶段 2. 5月10日上线",
+                    "action_items": "张三：完成联调；李四：准备演示",
+                }
+            ),
+        ):
             result = await agent.generate(
                 key_points="整理会议纪要：参会人张三李四王五，决定5月10上线",
                 content_type=ContentType.MEETING_MINUTES,
@@ -184,13 +211,19 @@ class TestContentGeneratorAgentRender:
         """render_doc_workflow() renders generated content into DocWorkflow."""
         agent = ContentGeneratorAgent()
 
-        with patch.object(agent, "_call_llm", new=AsyncMock(return_value={
-            "title": "关于开展安全检查的通知",
-            "to": "各部门",
-            "body": "拟于5月开展安全检查，请各部门配合做好自查工作。",
-            "sender": "XX办公室",
-            "date": "2026年4月30日",
-        })):
+        with patch.object(
+            agent,
+            "_call_llm",
+            new=AsyncMock(
+                return_value={
+                    "title": "关于开展安全检查的通知",
+                    "to": "各部门",
+                    "body": "拟于5月开展安全检查，请各部门配合做好自查工作。",
+                    "sender": "XX办公室",
+                    "date": "2026年4月30日",
+                }
+            ),
+        ):
             result = await agent.generate(
                 key_points="发个通知，要求各部门开展安全检查",
                 content_type=ContentType.NOTICE,

@@ -13,7 +13,6 @@ import logging
 import traceback
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 # Thread-safe context variables for correlation IDs

@@ -327,11 +327,11 @@ class JarvisInterface:
             preference: TonePreference for personality tuning
         """
         title = "📊 自治帝国：资产负债大盘"
-        
+
         roi = stats.get("portfolio_roi", 0.0)
         roi_color = "green" if roi >= 0 else "red"
         roi_text = f"<font color='{roi_color}'>**{roi:.2f}%**</font>"
-        
+
         content = (
             f"**资产概览**\n"
             f"- 总资产数: {stats.get('artifact_count', 0)}\n"
@@ -341,7 +341,7 @@ class JarvisInterface:
             f"当前帝国 ROI: {roi_text}\n\n"
             f"*注：数据基于所有 Artifacts 自动汇总。*"
         )
-        
+
         actions = [
             {"text": "查看详情", "value": "view_portfolio_details", "type": "primary"},
             {"text": "刷新大盘", "value": "refresh_dashboard", "type": "default"},

@@ -58,18 +58,24 @@ class FeishuLabor:
 
             if engine:
                 # Use real feishu tools via WorkflowEngine
-                doc_result = await engine._execute_tool("feishu_doc_create", {
-                    "title": title,
-                    "content": f"Artifact: {artifact_path}",
-                    "user_id": user_id,
-                })
+                doc_result = await engine._execute_tool(
+                    "feishu_doc_create",
+                    {
+                        "title": title,
+                        "content": f"Artifact: {artifact_path}",
+                        "user_id": user_id,
+                    },
+                )
 
                 # Send notification message
-                await engine._execute_tool("feishu_message_send", {
-                    "title": title,
-                    "content": f"Document delivered: {artifact_path}",
-                    "user_id": user_id,
-                })
+                await engine._execute_tool(
+                    "feishu_message_send",
+                    {
+                        "title": title,
+                        "content": f"Document delivered: {artifact_path}",
+                        "user_id": user_id,
+                    },
+                )
 
                 delivery_record = {
                     "delivered_to": "feishu",
@@ -90,12 +96,14 @@ class FeishuLabor:
 
             # Save delivery record
             record_file = artifact_dir / "delivery_record.json"
-            record_file.write_text(json.dumps(delivery_record, ensure_ascii=False, indent=2), encoding="utf-8")
+            record_file.write_text(
+                json.dumps(delivery_record, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
             logger.info("M6_DELIVERY: delivered to Feishu")
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M6_DELIVERY failed")
             return False
 

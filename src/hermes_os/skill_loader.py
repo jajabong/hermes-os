@@ -7,9 +7,13 @@ SkillLoader reads them and injects into claude -p context.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from hermes_os.skill_discovery import SkillDiscovery
 
 # Transient skills written by SkillDiscovery
 TRANSIENT_SKILLS_DIR = Path.home() / ".hermes" / "skills" / "_transient"
@@ -18,11 +22,26 @@ TRANSIENT_SKILLS_DIR = Path.home() / ".hermes" / "skills" / "_transient"
 class SkillLoader:
     """Load, format, and manage transient skills discovered at runtime."""
 
-    def __init__(self, transient_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        transient_dir: Path | None = None,
+        skill_discovery: SkillDiscovery | None = None,
+    ) -> None:
         self._transient_dir = transient_dir or TRANSIENT_SKILLS_DIR
         self._transient_dir.mkdir(parents=True, exist_ok=True)
+        self._skill_discovery = skill_discovery
 
-    def load_transient_skills(self) -> list[dict[str, Any]]:
+    def _record_usage_async(self, skill_name: str) -> None:
+        """Fire-and-forget record_usage call — doesn't block skill loading."""
+        if self._skill_discovery is None:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._skill_discovery.record_usage(skill_name, success=True))
+        except RuntimeError:
+            pass  # No running loop
+
+    def load_transient_skills(self, record_usage: bool = True) -> list[dict[str, Any]]:
         """Read all SKILL.md files in _transient/ and return metadata + content.
 
         Returns:
@@ -52,6 +71,12 @@ class SkillLoader:
 
         # Sort by quality score descending
         skills.sort(key=lambda s: s.get("quality_score", 0.0), reverse=True)
+
+        # Track usage for effectiveness loop (fire-and-forget)
+        if record_usage:
+            for skill in skills:
+                self._record_usage_async(skill.get("name", ""))
+
         return skills
 
     def _parse_skill_file(self, content: str, dir_name: str) -> dict[str, Any] | None:
@@ -62,7 +87,7 @@ class SkillLoader:
             return None
 
         frontmatter_text = match.group(1)
-        body = content[match.end():].strip()
+        body = content[match.end() :].strip()
 
         # Parse frontmatter key:value lines
         data: dict[str, Any] = {"content": body}
@@ -115,13 +140,13 @@ class SkillLoader:
         parts.append("---")
         return "\n".join(parts)
 
-    def get_all_prompt_fragments(self, max_skills: int = 10) -> str:
+    def get_all_prompt_fragments(self, max_skills: int = 10, record_usage: bool = True) -> str:
         """Load all transient skills and return a merged fragment string.
 
         Useful for injecting into claude -p system_prompt or appending to prompt.
         Skips skills with quality_score < 0.3 (low quality).
         """
-        skills = self.load_transient_skills()
+        skills = self.load_transient_skills(record_usage=record_usage)
 
         fragments: list[str] = []
         for skill in skills[:max_skills]:
@@ -161,4 +186,6 @@ class SkillLoader:
         """Return the number of transient skills currently loaded."""
         if not self._transient_dir.exists():
             return 0
-        return sum(1 for d in self._transient_dir.iterdir() if d.is_dir() and (d / "SKILL.md").exists())
+        return sum(
+            1 for d in self._transient_dir.iterdir() if d.is_dir() and (d / "SKILL.md").exists()
+        )

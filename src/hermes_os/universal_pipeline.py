@@ -11,13 +11,12 @@ Write ONE engine that loads different YAML configs.
 
 from __future__ import annotations
 
-import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Pipeline Definitions (YAML strings - can be loaded from files)
@@ -172,9 +171,11 @@ PIPELINE_REGISTRY = {
 # Core Classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class StageDefinition:
     """Definition of a single pipeline stage."""
+
     stage: str
     labor: str
     task: str
@@ -185,24 +186,27 @@ class StageDefinition:
 @dataclass
 class PipelineConfig:
     """Configuration for a pipeline."""
+
     name: str
     description: str
     version: str = "1.0"
     steps: list[StageDefinition] = field(default_factory=list)
 
     @classmethod
-    def from_yaml(cls, yaml_str: str) -> "PipelineConfig":
+    def from_yaml(cls, yaml_str: str) -> PipelineConfig:
         """Parse pipeline from YAML string."""
         data = yaml.safe_load(yaml_str)
         steps = []
         for step_data in data.get("steps", []):
-            steps.append(StageDefinition(
-                stage=step_data["stage"],
-                labor=step_data["labor"],
-                task=step_data["task"],
-                verify=step_data["verify"],
-                template=step_data.get("template"),
-            ))
+            steps.append(
+                StageDefinition(
+                    stage=step_data["stage"],
+                    labor=step_data["labor"],
+                    task=step_data["task"],
+                    verify=step_data["verify"],
+                    template=step_data.get("template"),
+                )
+            )
         return cls(
             name=data["name"],
             description=data.get("description", ""),
@@ -214,6 +218,7 @@ class PipelineConfig:
 @dataclass
 class LaborHandler:
     """A registered Labor handler."""
+
     name: str
     execute: Callable[..., Any]
 
@@ -221,6 +226,7 @@ class LaborHandler:
 @dataclass
 class StageResult:
     """Result of executing a single stage."""
+
     passed: bool
     stage: str
     output: str | None = None
@@ -231,6 +237,7 @@ class StageResult:
 @dataclass
 class VerificationResult:
     """Result of a verification check."""
+
     passed: bool
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -239,6 +246,7 @@ class VerificationResult:
 @dataclass
 class PipelineExecutionResult:
     """Result of executing a full pipeline."""
+
     pipeline_name: str
     artifact_id: str
     success: bool
@@ -249,6 +257,7 @@ class PipelineExecutionResult:
 
 class PipelineLoadError(Exception):
     """Raised when pipeline loading fails."""
+
     pass
 
 
@@ -384,7 +393,9 @@ class UniversalPipelineLoader:
     def load_pipeline(self, pipeline_name: str) -> PipelineConfig:
         """Load one of the 5 built-in pipelines by name."""
         if pipeline_name not in PIPELINE_REGISTRY:
-            raise PipelineLoadError(f"Unknown pipeline: {pipeline_name}. Available: {list(PIPELINE_REGISTRY.keys())}")
+            raise PipelineLoadError(
+                f"Unknown pipeline: {pipeline_name}. Available: {list(PIPELINE_REGISTRY.keys())}"
+            )
 
         return PipelineConfig.from_yaml(PIPELINE_REGISTRY[pipeline_name])
 

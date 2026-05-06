@@ -6,8 +6,6 @@ import asyncio
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 
 def test_migration_produces_correct_user_shards() -> None:
     """hermes_os.db users should land in expected shards per ShardManager."""
@@ -34,7 +32,7 @@ def test_migration_produces_correct_user_shards() -> None:
 
 def test_migration_dry_run_migrates_all_tables(tmp_path: Path) -> None:
     """Dry run should migrate users, messages, sessions, conversation_states."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     # Create source DB with all expected tables
     src_db = tmp_path / "hermes_os.db"
@@ -79,12 +77,8 @@ def test_migration_dry_run_migrates_all_tables(tmp_path: Path) -> None:
     conn.execute(
         "INSERT INTO users VALUES ('u_dryrun', 'DryRunUser', 'user', 'default', 'feishu', 'ou_test', '2026-01-01')"
     )
-    conn.execute(
-        "INSERT INTO messages VALUES (1, 'u_dryrun', 'user', 'hello', '2026-01-01')"
-    )
-    conn.execute(
-        "INSERT INTO sessions VALUES ('u_dryrun', 'sess_dryrun')"
-    )
+    conn.execute("INSERT INTO messages VALUES (1, 'u_dryrun', 'user', 'hello', '2026-01-01')")
+    conn.execute("INSERT INTO sessions VALUES ('u_dryrun', 'sess_dryrun')")
     conn.commit()
     conn.close()
 
@@ -108,7 +102,7 @@ def test_migration_dry_run_migrates_all_tables(tmp_path: Path) -> None:
 
 def test_migration_handles_empty_source_tables(tmp_path: Path) -> None:
     """Migration should not fail if some tables are empty."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     src_db = tmp_path / "minimal.db"
     conn = sqlite3.connect(str(src_db))

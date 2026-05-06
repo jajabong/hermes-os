@@ -63,12 +63,14 @@ class ResearchLabor:
 
             # Save research context
             research_file = wiki_dir / "research_context.json"
-            research_file.write_text(json.dumps(research_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            research_file.write_text(
+                json.dumps(research_data, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
             logger.info("M2_RESEARCH: retrieved %d references", len(research_data["references"]))
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M2_RESEARCH failed")
             return False
 
@@ -91,12 +93,14 @@ class ResearchLabor:
 
             # Save analysis results
             analysis_file = data_dir / "analysis.json"
-            analysis_file.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
+            analysis_file.write_text(
+                json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
             logger.info("M3_REASONING: computed %d metrics", len(metrics.get("metrics", [])))
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M3_REASONING failed")
             return False
 
@@ -110,26 +114,30 @@ class ResearchLabor:
             stars = [r.get("stars", 0) for r in repos if isinstance(r, dict)]
             forks = [r.get("forks", 0) for r in repos if isinstance(r, dict)]
 
-            metrics.append({
-                "name": "repository_stats",
-                "values": {
-                    "total_repos": len(repos),
-                    "total_stars": sum(stars),
-                    "total_forks": sum(forks),
-                    "avg_stars": sum(stars) / len(stars) if stars else 0,
-                    "avg_forks": sum(forks) / len(forks) if forks else 0,
+            metrics.append(
+                {
+                    "name": "repository_stats",
+                    "values": {
+                        "total_repos": len(repos),
+                        "total_stars": sum(stars),
+                        "total_forks": sum(forks),
+                        "avg_stars": sum(stars) / len(stars) if stars else 0,
+                        "avg_forks": sum(forks) / len(forks) if forks else 0,
+                    },
                 }
-            })
+            )
 
         # Extract docs if present
         docs = data.get("docs", [])
         if isinstance(docs, list) and len(docs) > 0:
-            metrics.append({
-                "name": "document_count",
-                "values": {
-                    "total_docs": len(docs),
+            metrics.append(
+                {
+                    "name": "document_count",
+                    "values": {
+                        "total_docs": len(docs),
+                    },
                 }
-            })
+            )
 
         return {"metrics": metrics}
 

@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from hermes_os.shard_manager import ShardManager, ShardedStorage
-
+from hermes_os.shard_manager import ShardedStorage, ShardManager
 
 # ---------------------------------------------------------------------------
 # ShardManager tests
 # ---------------------------------------------------------------------------
+
 
 def test_shard_index_is_deterministic() -> None:
     """Same user_id must always map to the same shard index."""
@@ -65,6 +62,7 @@ def test_shard_dir_auto_created_on_first_access(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # ShardedStorage tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sharded_storage(tmp_path: Path) -> ShardedStorage:
@@ -141,9 +139,7 @@ async def test_insert_and_query_user_in_shard(sharded_storage: ShardedStorage) -
     )
     await db.commit()
 
-    async with db.execute(
-        "SELECT * FROM user_shard_index WHERE user_id = ?", (uid,)
-    ) as cursor:
+    async with db.execute("SELECT * FROM user_shard_index WHERE user_id = ?", (uid,)) as cursor:
         row = await cursor.fetchone()
 
     assert row is not None
@@ -187,9 +183,13 @@ async def test_multiple_users_in_same_shard(sharded_storage: ShardedStorage) -> 
     await db_b.commit()
 
     # Verify both exist in their respective DBs
-    async with db_a.execute("SELECT user_id FROM user_shard_index WHERE user_id = ?", (uid_a,)) as cur:
+    async with db_a.execute(
+        "SELECT user_id FROM user_shard_index WHERE user_id = ?", (uid_a,)
+    ) as cur:
         row_a = await cur.fetchone()
-    async with db_b.execute("SELECT user_id FROM user_shard_index WHERE user_id = ?", (uid_b,)) as cur:
+    async with db_b.execute(
+        "SELECT user_id FROM user_shard_index WHERE user_id = ?", (uid_b,)
+    ) as cur:
         row_b = await cur.fetchone()
 
     assert row_a is not None

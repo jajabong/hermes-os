@@ -24,6 +24,7 @@ from hermes_os.org_context import (
     build_org_context,
     get_role_for_intent,
 )
+from hermes_os.org_memory import OrgMemory
 from hermes_os.task_scheduler import TaskPriority, TaskScheduler
 
 
@@ -519,6 +520,7 @@ class ChiefAgent:
         user_id: str,
         scheduler: TaskScheduler,
         max_suggestions: int = 3,
+        org_memory: "OrgMemory | None" = None,
     ) -> list[str]:
         """Analyze pending/failed tasks and suggest next actions.
 
@@ -534,8 +536,13 @@ class ChiefAgent:
 
             for task in failed_tasks:
                 if task.error:
+                    error_solution = ""
+                    if org_memory and task.title:
+                        memory_ctx = org_memory.search_relevant_memory(task.title)
+                        if memory_ctx:
+                            error_solution = f" (上次类似失败解决方案: {memory_ctx[:100]})"
                     suggestions.append(
-                        f"Task '{task.title}' failed with: {task.error[:80]}. "
+                        f"❌ Task '{task.title}' failed{error_solution}. "
                         f"Consider fixing and retrying."
                     )
 
@@ -559,6 +566,30 @@ class ChiefAgent:
                         f"Macro task '{task.metadata['macro_title']}' "
                         f"has pending subtasks. Check progress."
                     )
+
+            # Goal-aware suggestions: what should the user focus on next?
+            if self._goal_tracker:
+                goal = await self._goal_tracker.get_active_goal(user_id)
+                if goal and not goal.is_completed:
+                    progress_pct = int(goal.progress * 100)
+                    current = goal.current_phase
+                    next_p = goal.next_phase
+                    if next_p:
+                        suggestions.append(
+                            f"🎯 目标进度 {progress_pct}%：当前阶段「{current}」，"
+                            f"建议下一步：「{next_p}」"
+                        )
+                    else:
+                        suggestions.append(
+                            f"🎯 目标「{current}」进行中 ({progress_pct}%)，"
+                            f"即将完成"
+                        )
+
+                    # If goal is stalled (no task progress), suggest next action
+                    if not pending_tasks and not failed_tasks:
+                        inferred = await self._goal_tracker.infer_next_action(user_id, "")
+                        if inferred:
+                            suggestions.append(f"💡 {inferred}")
 
         except Exception:
             pass

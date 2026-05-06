@@ -23,8 +23,9 @@ import yaml
 @dataclass
 class ProjectStep:
     """A single step in a project pipeline chain."""
-    pipeline: str          # e.g. "P3_Intelligence", "P1_Content_Assembly"
-    task_id: str          # Unique task ID for this step
+
+    pipeline: str  # e.g. "P3_Intelligence", "P1_Content_Assembly"
+    task_id: str  # Unique task ID for this step
     depends_on: list[str] = field(default_factory=list)  # IDs of steps that must run first
     context: dict[str, Any] = field(default_factory=dict)
     input_artifact: str | None = None  # Override for artifact linkage
@@ -37,6 +38,7 @@ class ProjectStep:
 @dataclass
 class ProjectDefinition:
     """A complete project definition loaded from project.yaml."""
+
     name: str
     description: str
     version: str
@@ -44,7 +46,7 @@ class ProjectDefinition:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_yaml(cls, path: Path | str) -> "ProjectDefinition":
+    def from_yaml(cls, path: Path | str) -> ProjectDefinition:
         """Load project definition from a YAML file."""
         data = yaml.safe_load(Path(path).read_text("utf-8"))
         steps = []
@@ -78,8 +80,7 @@ class ProjectDefinition:
         while remaining:
             # Find steps whose dependencies are all satisfied
             ready = [
-                s for s in remaining.values()
-                if all(dep in completed_ids for dep in s.depends_on)
+                s for s in remaining.values() if all(dep in completed_ids for dep in s.depends_on)
             ]
             if not ready:
                 # Circular dependency or missing step — bail

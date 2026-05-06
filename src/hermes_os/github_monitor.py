@@ -14,15 +14,13 @@ import hashlib
 import hmac
 import logging
 import os
-import re
-from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from hermes_os.event_loop import Event, EventType, HermesOSEventLoop, get_event_bus
+from hermes_os.event_loop import Event, EventType, get_event_bus
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +121,9 @@ class IssuePayload(BaseModel):
 _GITHUB_WEBHOOK_SECRET = os.environ.get("HERMES_GITHUB_WEBHOOK_SECRET", "")
 
 
-def verify_github_signature(body: bytes, signature: str | None, secret: str = _GITHUB_WEBHOOK_SECRET) -> bool:
+def verify_github_signature(
+    body: bytes, signature: str | None, secret: str = _GITHUB_WEBHOOK_SECRET
+) -> bool:
     """Verify X-Hub-Signature-256 header against the raw request body."""
     if not signature or not secret:
         return True  # Skip verification if no secret configured (dev mode)
@@ -179,9 +179,7 @@ def pr_to_event(action: str, payload: dict[str, Any]) -> Event | None:
             "additions": pr.get("additions", 0),
             "deletions": pr.get("deletions", 0),
             "labels": [l.get("name", "") for l in pr.get("labels", [])],
-            "requested_reviewers": [
-                r.get("login", "") for r in pr.get("requested_reviewers", [])
-            ],
+            "requested_reviewers": [r.get("login", "") for r in pr.get("requested_reviewers", [])],
             "action": action,
             "raw": payload,
         },
@@ -199,7 +197,7 @@ def push_to_event(payload: dict[str, Any]) -> Event:
     branch = ""
     ref = payload.get("ref", "")
     if ref.startswith("refs/heads/"):
-        branch = ref[len("refs/heads/"):]
+        branch = ref[len("refs/heads/") :]
 
     return Event(
         type=EventType.PUSH,
@@ -217,9 +215,7 @@ def push_to_event(payload: dict[str, Any]) -> Event:
             "deleted": payload.get("deleted", False),
             "commit_count": len(commits),
             "pusher": payload.get("pusher", {}).get("name", ""),
-            "commits_summary": (
-                f"{len(commits)} commit(s)" if commits else "no commits"
-            ),
+            "commits_summary": (f"{len(commits)} commit(s)" if commits else "no commits"),
             "raw": payload,
         },
         source="github",
@@ -346,8 +342,13 @@ async def github_webhook(
     elif event_name in ("issues", "issue_comment"):
         action = payload.get("action", "")
         event = issue_to_event(action, payload)
-    elif event_name in ("check_run", "check_suite", "release",
-                        "pull_request_review", "pull_request_review_comment"):
+    elif event_name in (
+        "check_run",
+        "check_suite",
+        "release",
+        "pull_request_review",
+        "pull_request_review_comment",
+    ):
         # Forward but don't transform — let handlers deal with raw payload
         repo = payload.get("repository", {}).get("full_name", "")
         event = Event(
@@ -400,5 +401,7 @@ def run_server(port: int = 8089) -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     run_server()

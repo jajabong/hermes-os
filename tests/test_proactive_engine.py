@@ -1,12 +1,12 @@
 """Tests for ProactiveEngine scheduled workflow execution."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
 
 from hermes_os.event_loop import Event, EventType
 from hermes_os.proactive_engine import ProactiveEngine
-from hermes_os.task_scheduler import Task, TaskStatus, TaskPriority
+from hermes_os.task_scheduler import Task, TaskPriority, TaskStatus
 
 
 class TestProactiveEngineScheduledWorkflow:
@@ -54,12 +54,26 @@ class TestProactiveEngineScheduledWorkflow:
         """_shallow_patrol logs task statistics without blocking."""
         engine = ProactiveEngine()
         mock_scheduler = MagicMock()
-        mock_scheduler.get_all_tasks = AsyncMock(return_value=[
-            Task(task_id="t1", user_id="alice", title="Task 1", description="",
-                 status=TaskStatus.FAILED, priority=TaskPriority.NORMAL),
-            Task(task_id="t2", user_id="alice", title="Task 2", description="",
-                 status=TaskStatus.BLOCKED, priority=TaskPriority.NORMAL),
-        ])
+        mock_scheduler.get_all_tasks = AsyncMock(
+            return_value=[
+                Task(
+                    task_id="t1",
+                    user_id="alice",
+                    title="Task 1",
+                    description="",
+                    status=TaskStatus.FAILED,
+                    priority=TaskPriority.NORMAL,
+                ),
+                Task(
+                    task_id="t2",
+                    user_id="alice",
+                    title="Task 2",
+                    description="",
+                    status=TaskStatus.BLOCKED,
+                    priority=TaskPriority.NORMAL,
+                ),
+            ]
+        )
         engine._scheduler = mock_scheduler
 
         await engine._shallow_patrol(tick_count=10)
@@ -75,11 +89,13 @@ class TestProactiveEngineWorkflowExecution:
         """execute_scheduled_workflow() runs a workflow for a specific user."""
         engine = ProactiveEngine()
         mock_workflow = MagicMock()
-        mock_workflow.execute = AsyncMock(return_value=MagicMock(
-            success=True,
-            results=["meeting1", "meeting2"],
-            error=None,
-        ))
+        mock_workflow.execute = AsyncMock(
+            return_value=MagicMock(
+                success=True,
+                results=["meeting1", "meeting2"],
+                error=None,
+            )
+        )
 
         engine._workflow_engine = mock_workflow
         result = await engine.execute_scheduled_workflow(
@@ -98,7 +114,12 @@ class TestProactiveEngineWorkflowExecution:
             success=True,
             results=["Calendar: 2 events", "Tasks: 5 pending"],
         )
-        mock_result.to_feishu_card = MagicMock(return_value={"header": {"title": {"content": "Daily"}}, "elements": [{"text": {"content": "content"}}]})
+        mock_result.to_feishu_card = MagicMock(
+            return_value={
+                "header": {"title": {"content": "Daily"}},
+                "elements": [{"text": {"content": "content"}}],
+            }
+        )
         mock_workflow.execute = AsyncMock(return_value=mock_result)
         mock_jarvis = MagicMock()
         mock_jarvis.send_card_with_nl = AsyncMock()
@@ -121,9 +142,7 @@ class TestProactiveEngineUserOptIn:
         """_get_users_with_daily_briefing_enabled() returns users who opted in."""
         engine = ProactiveEngine()
         mock_registry = MagicMock()
-        mock_registry.list_users_with_flag = AsyncMock(return_value=[
-            "alice", "bob"
-        ])
+        mock_registry.list_users_with_flag = AsyncMock(return_value=["alice", "bob"])
         engine._user_registry = mock_registry
 
         users = await engine._get_users_with_daily_briefing_enabled()

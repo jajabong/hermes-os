@@ -49,7 +49,7 @@ class CheckerLabor:
 
             return passed
 
-        except Exception as e:
+        except Exception:
             logger.exception("CheckerLabor exception")
             return False
 

@@ -32,10 +32,7 @@ class SessionManager:
 
         # Load history from storage
         history_rows = await self.storage.get_messages(user_id)
-        history = [
-            Message(role=row["role"], content=row["content"])
-            for row in history_rows
-        ]
+        history = [Message(role=row["role"], content=row["content"]) for row in history_rows]
 
         # Load persisted session_id, or generate a new one
         session_id = await self.storage.get_session_id(user_id)

@@ -16,27 +16,25 @@ Integration point:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from hermes_os.pipeline_engine import (
-    PipelineEngine,
-    PipelineDefinition,
-    PipelineWorkspace,
-    PipelineStage,
-    StageStatus,
-)
 from hermes_os.guardian_controller import (
-    GuardianController,
-    GuardianConfig,
     CheckpointData,
     EscalationDecision,
+    GuardianConfig,
+    GuardianController,
 )
-from hermes_os.notification_manager import NotificationManager, NotificationEvent
+from hermes_os.notification_manager import NotificationEvent, NotificationManager
+from hermes_os.pipeline_engine import (
+    PipelineDefinition,
+    PipelineEngine,
+    PipelineStage,
+    PipelineWorkspace,
+)
 
 logger = logging.getLogger("hermes_os.pipeline_runner")
 
@@ -45,9 +43,11 @@ logger = logging.getLogger("hermes_os.pipeline_runner")
 # Pipeline Task Context
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class PipelineTaskContext:
     """Context extracted from Task.metadata for pipeline execution."""
+
     pipeline_task_id: str
     stage_name: str
     pipeline_name: str = ""
@@ -79,9 +79,11 @@ class PipelineTaskContext:
 # Stage Milestone
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class StageMilestone:
     """Record of a completed (or failed) pipeline stage."""
+
     task_id: str
     stage_name: str
     status: str  # "completed" | "failed"
@@ -110,6 +112,7 @@ class StageMilestone:
 # MilestoneNotifier
 # ---------------------------------------------------------------------------
 
+
 class MilestoneNotifier:
     """Sends JARVIS milestone cards when pipeline stages complete."""
 
@@ -121,7 +124,11 @@ class MilestoneNotifier:
         if self._nm is None:
             return
 
-        event = NotificationEvent.COMPLETED if milestone.status == "completed" else NotificationEvent.FAILED
+        event = (
+            NotificationEvent.COMPLETED
+            if milestone.status == "completed"
+            else NotificationEvent.FAILED
+        )
 
         # Build progress string
         progress_str = ""
@@ -165,6 +172,7 @@ class MilestoneNotifier:
 # PipelineTaskRunner
 # ---------------------------------------------------------------------------
 
+
 class PipelineTaskRunner:
     """
     Executes pipeline stages as Tasks within TaskScheduler.
@@ -206,6 +214,7 @@ class PipelineTaskRunner:
         for yaml_file in self._discover_all_pipeline_files():
             try:
                 import yaml
+
                 data = yaml.safe_load(yaml_file.read_text("utf-8"))
                 if data.get("name") == pipeline_name:
                     return yaml_file
@@ -237,6 +246,7 @@ class PipelineTaskRunner:
             Deduplicated by absolute path.
         """
         import yaml
+
         seen: set[str] = set()
         pipelines = []
         for yaml_file in self._discover_all_pipeline_files():
@@ -246,18 +256,22 @@ class PipelineTaskRunner:
             seen.add(abs_path)
             try:
                 data = yaml.safe_load(yaml_file.read_text("utf-8"))
-                pipelines.append({
-                    "name": data.get("name", "Unnamed"),
-                    "description": data.get("description", ""),
-                    "path": abs_path,
-                    "version": data.get("version", "1.0"),
-                    "stages": len(data.get("stages", [])),
-                })
+                pipelines.append(
+                    {
+                        "name": data.get("name", "Unnamed"),
+                        "description": data.get("description", ""),
+                        "path": abs_path,
+                        "version": data.get("version", "1.0"),
+                        "stages": len(data.get("stages", [])),
+                    }
+                )
             except Exception:
                 continue
         return pipelines
 
-    def _load_pipeline(self, pipeline_name: str, pipeline_path: str = "") -> PipelineDefinition | None:
+    def _load_pipeline(
+        self, pipeline_name: str, pipeline_path: str = ""
+    ) -> PipelineDefinition | None:
         """Load pipeline definition (with caching)."""
         cache_key = pipeline_name
         if cache_key in self._pipeline_cache:
@@ -330,11 +344,13 @@ class PipelineTaskRunner:
         for stage in definition.stages:
             status = ws.stage_statuses.get(stage.name, "pending")
             duration = 0.0  # Duration not tracked per-stage in current impl
-            stage_details.append({
-                "name": stage.name,
-                "status": status,
-                "duration_seconds": duration,
-            })
+            stage_details.append(
+                {
+                    "name": stage.name,
+                    "status": status,
+                    "duration_seconds": duration,
+                }
+            )
 
         return {
             "task_id": pipeline_task_id,
@@ -392,7 +408,8 @@ class PipelineTaskRunner:
         if stage is None:
             logger.error(
                 "PipelineTaskRunner: stage '%s' not found in pipeline '%s'",
-                ctx.stage_name, ctx.pipeline_name,
+                ctx.stage_name,
+                ctx.pipeline_name,
             )
             return None
 
@@ -411,16 +428,19 @@ class PipelineTaskRunner:
 
         # Save Guardian checkpoint before execution
         guardian = self._get_guardian()
-        await guardian.save_checkpoint(CheckpointData(
-            task_id=task_id,
-            stage=ctx.stage_name,
-            status="in_progress",
-            completed_stages=ws.completed_stages,
-            metadata={"user_id": ctx.user_id, "pipeline_task_id": ctx.pipeline_task_id},
-        ))
+        await guardian.save_checkpoint(
+            CheckpointData(
+                task_id=task_id,
+                stage=ctx.stage_name,
+                status="in_progress",
+                completed_stages=ws.completed_stages,
+                metadata={"user_id": ctx.user_id, "pipeline_task_id": ctx.pipeline_task_id},
+            )
+        )
 
         # Execute the stage
         import time
+
         start = time.monotonic()
         engine = PipelineEngine(artifact_base=self._artifact_base)
         result = await engine.execute_stage(ctx.pipeline_task_id, stage, context)
@@ -464,7 +484,9 @@ class PipelineTaskRunner:
 
         # Handle Guardian error path
         if not result.success:
-            handle_result = await guardian.handle_invocation_error(task_id, result.error or "Unknown error")
+            handle_result = await guardian.handle_invocation_error(
+                task_id, result.error or "Unknown error"
+            )
             if handle_result.decision == EscalationDecision.ESCALATE:
                 await guardian.escalate(task_id)
 

@@ -1,10 +1,8 @@
 """Tests for UserFileManager — per-user file storage."""
 
 import pytest
-import asyncio
-from pathlib import Path
 
-from hermes_os.user_file_manager import UserFileManager, _USER_FILES_BASE
+from hermes_os.user_file_manager import _USER_FILES_BASE, UserFileManager
 
 
 class TestUserFileManagerPaths:

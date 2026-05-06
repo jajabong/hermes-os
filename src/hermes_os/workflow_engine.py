@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,9 @@ class WorkflowResult:
 
     def to_feishu_card(self, title: str = "Workflow Result") -> dict[str, Any]:
         """Format result as a Feishu card."""
-        content = "\n".join(f"• {r}" for r in self.results) if self.results else self.error or "无结果"
+        content = (
+            "\n".join(f"• {r}" for r in self.results) if self.results else self.error or "无结果"
+        )
         return {
             "config": {"wide_screen_mode": True},
             "header": {
@@ -167,9 +169,7 @@ class WorkflowEngine:
         results: list[str] = []
         for i, step in enumerate(workflow.steps):
             # Fill context variables in args
-            filled_args = {
-                k: _fill_template(str(v), context) for k, v in step.args.items()
-            }
+            filled_args = {k: _fill_template(str(v), context) for k, v in step.args.items()}
 
             result_str = await self._execute_tool(step.tool_name, filled_args)
             results.append(result_str)

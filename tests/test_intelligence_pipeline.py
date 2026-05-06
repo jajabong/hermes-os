@@ -10,12 +10,12 @@ Intelligence Pipeline stages:
 - M5_INSIGHT: Synthesize findings into insights
 """
 
-import pytest
-import asyncio
-import tempfile
 import json
+import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from hermes_os.labor.data_labor import DataLabor
 
@@ -28,6 +28,7 @@ class TestDataLaborInterface:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -51,7 +52,9 @@ class TestDataLaborInterface:
         workspace = Path(temp_dir) / "test_workspace"
         workspace.mkdir(parents=True, exist_ok=True)
 
-        with patch("hermes_os.labor.data_labor.fetch_github_data", new_callable=AsyncMock) as mock_fetch:
+        with patch(
+            "hermes_os.labor.data_labor.fetch_github_data", new_callable=AsyncMock
+        ) as mock_fetch:
             mock_fetch.return_value = {"repos": [{"name": "test-repo", "stars": 100}]}
 
             result = await labor.execute(
@@ -75,7 +78,13 @@ class TestIntelligencePipelineStages:
         loader = UniversalPipelineLoader()
         config = loader.load_pipeline("intelligence")
         stages = [s.stage for s in config.steps]
-        assert stages == ["M1_DATAFETCH", "M2_NORMALIZE", "M3_REASONING", "M4_VISUALIZE", "M5_INSIGHT"]
+        assert stages == [
+            "M1_DATAFETCH",
+            "M2_NORMALIZE",
+            "M3_REASONING",
+            "M4_VISUALIZE",
+            "M5_INSIGHT",
+        ]
 
     def test_intelligence_pipeline_m1_uses_datalabor(self) -> None:
         """M1_DATAFETCH should use DataLabor."""
@@ -136,6 +145,7 @@ class TestDataLaborM1DataFetch:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -207,6 +217,7 @@ class TestDataLaborM2Normalize:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -220,7 +231,9 @@ class TestDataLaborM2Normalize:
         data_dir = workspace / "src" / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         raw_file = data_dir / "raw.json"
-        raw_file.write_text(json.dumps({"raw": "data", "null_value": None, "extra": "field"}), encoding="utf-8")
+        raw_file.write_text(
+            json.dumps({"raw": "data", "null_value": None, "extra": "field"}), encoding="utf-8"
+        )
 
         result = await labor.execute(
             workspace=workspace,
@@ -241,6 +254,7 @@ class TestDataLaborM4Visualize:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -254,12 +268,17 @@ class TestDataLaborM4Visualize:
         data_dir = workspace / "src" / "data"
         data_dir.mkdir(parents=True, exist_ok=True)
         norm_file = data_dir / "normalized.json"
-        norm_file.write_text(json.dumps({
-            "repos": [
-                {"name": "repo1", "stars": 100, "forks": 20},
-                {"name": "repo2", "stars": 200, "forks": 30},
-            ]
-        }), encoding="utf-8")
+        norm_file.write_text(
+            json.dumps(
+                {
+                    "repos": [
+                        {"name": "repo1", "stars": 100, "forks": 20},
+                        {"name": "repo2", "stars": 200, "forks": 30},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
 
         result = await labor.execute(
             workspace=workspace,
@@ -308,7 +327,7 @@ class TestDataLaborVerification:
         result = await verify_analysis_complete('{"metrics": {"avg": 100, "total": 1000}}')
         assert result.passed is True
 
-        result = await verify_analysis_complete('{}')
+        result = await verify_analysis_complete("{}")
         assert result.passed is False
 
     @pytest.mark.asyncio

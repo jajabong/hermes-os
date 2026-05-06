@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from hermes_os.brain_indexer import BrainIndexer, BrainIndex
+from hermes_os.brain_indexer import BrainIndex, BrainIndexer
 from hermes_os.context_injector import ContextInjector
 from hermes_os.knowledge_router import KnowledgeRouter
 from hermes_os.memory_router import MemoryRouter
@@ -18,9 +18,9 @@ from hermes_os.user_registry import UserRegistry
 class GatewayEvent:
     """A raw event coming from hermes-agent gateway."""
 
-    platform: str           # telegram | discord | feishu | ...
+    platform: str  # telegram | discord | feishu | ...
     platform_user_id: str  # native user id on that platform
-    message: str           # raw text from user
+    message: str  # raw text from user
     user_name: str = "Unknown"
     user_id_alt: str | None = None  # union_id for Feishu, stable across apps
     profile: dict | None = None  # full user profile from hermes_state
@@ -141,7 +141,7 @@ class UserRouter:
         lines.append("</knowledge>")
         return "\n".join(lines)
 
-    def _format_brain_context(self, brain_index: "BrainIndex") -> str:
+    def _format_brain_context(self, brain_index: BrainIndex) -> str:
         """Format BrainIndex as a <brain> context block injected into enriched_message."""
         parts = []
 

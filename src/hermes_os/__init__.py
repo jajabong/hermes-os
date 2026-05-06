@@ -1,114 +1,120 @@
 """Hermes OS — Multi-user platform layer on top of hermes-agent."""
 
-from hermes_os.task_scheduler import TaskScheduler, TaskStatus, TaskPriority, Task
-from hermes_os.skill_discovery import SkillDiscovery, DiscoveredSkill, CapabilityGap
-from hermes_os.claude_code_invocator import (
-    InvocationResult,
+from .approval_tracker import (
+    ApprovalRecord,
+    ApprovalStatus,
+    ApprovalTracker,
+)
+from .artifact_manager import (
+    ArtifactManager,
+    ArtifactMeta,
+    ArtifactStage,
+    ArtifactStatus,
+    ArtifactWorkspace,
+)
+from .brain_indexer import BrainIndex, BrainIndexer
+from .brain_updater import BrainUpdater
+from .claude_code_invocator import (
     InvocationError,
-    invoke,
-    invoke_stream,
-    invoke_bash,
+    InvocationResult,
     health_check,
+    invoke,
+    invoke_bash,
+    invoke_stream,
 )
-from hermes_os.jarvis_interface import JarvisInterface
-from hermes_os.conversation_state import ConversationStateManager, ConversationState
-from hermes_os.user_file_manager import UserFileManager
-from hermes_os.workflow_engine import (
-    WorkflowEngine,
-    WorkflowStep,
-    Workflow,
-    WorkflowResult,
-    IntentToWorkflowMapper,
-)
-from hermes_os.brain_indexer import BrainIndexer, BrainIndex
-from hermes_os.brain_updater import BrainUpdater
-from hermes_os.emotion_engine import EmotionEngine
-from hermes_os.emotion_types import EmotionState, ToneConfig
-from hermes_os.personality_tuner import PersonalityTuner, TonePreference
-from hermes_os.hermes_tool_registry import HermesToolRegistry, get_tool_registry
-from hermes_os.doc_workflow import (
-    DocType,
+from .content_generator import ContentGeneratorAgent, ContentType, GenerationResult
+from .conversation_state import ConversationState, ConversationStateManager
+from .doc_workflow import (
     ApprovalFlow,
+    DocType,
     DocWorkflowEngine,
     DocWorkflowResult,
 )
-from hermes_os.content_generator import ContentGeneratorAgent, ContentType, GenerationResult
-from hermes_os.research_workflow import (
-    ResearchWorkflowEngine,
-    IntelligenceSource,
-    IntelligenceResult,
-    RiskFlag,
-)
-from hermes_os.gemini_cli import (
+from .emotion_engine import EmotionEngine
+from .emotion_types import EmotionState, ToneConfig
+from .gemini_cli import (
     GeminiResult,
-    invoke as gemini_invoke,
-    invoke_stream as gemini_invoke_stream,
+)
+from .gemini_cli import (
     health_check as gemini_health_check,
 )
-from hermes_os.goal_tracker import (
-    GoalTracker,
-    GoalPhase,
-    GoalPattern,
-    GoalState,
-    EvolutionEntry,
+from .gemini_cli import (
+    invoke as gemini_invoke,
 )
-from hermes_os.proactive_engine import ProactiveEngine
-from hermes_os.guardian_controller import (
-    GuardianController,
-    GuardianConfig,
+from .gemini_cli import (
+    invoke_stream as gemini_invoke_stream,
+)
+from .goal_tracker import (
+    EvolutionEntry,
+    GoalPattern,
+    GoalPhase,
+    GoalState,
+    GoalTracker,
+)
+from .guardian_controller import (
     CheckpointData,
-    HandleResult,
     ErrorAttribution,
     ErrorType,
     EscalationDecision,
+    GuardianConfig,
+    GuardianController,
+    HandleResult,
 )
-from hermes_os.approval_tracker import (
-    ApprovalTracker,
-    ApprovalStatus,
-    ApprovalRecord,
-)
-from hermes_os.notification_manager import (
-    NotificationManager,
-    NotificationEvent,
-    SendThresholds,
-)
-from hermes_os.labor_registry import (
+from .hermes_tool_registry import HermesToolRegistry, get_tool_registry
+from .jarvis_interface import JarvisInterface
+from .labor_registry import (
+    LaborInterface,
     LaborRegistry,
     LaborResult,
-    LaborInterface,
     get_labor_registry,
     initialize_default_labors,
 )
-from hermes_os.artifact_manager import (
-    ArtifactManager,
-    ArtifactMeta,
-    ArtifactWorkspace,
-    ArtifactStage,
-    ArtifactStatus,
+from .memory_hub import (
+    ContextMemory,
+    IdentityMemory,
+    KnowledgeMemory,
+    MemoryHub,
+    PreferencesMemory,
+    RecentContextMemory,
 )
-from hermes_os.vertical_agent import (
+from .notification_manager import (
+    NotificationEvent,
+    NotificationManager,
+    SendThresholds,
+)
+from .output_adapter import (
+    OutputAdapter,
+    OutputStyle,
+)
+from .personality_tuner import PersonalityTuner, TonePreference
+from .proactive_engine import ProactiveEngine
+from .research_workflow import (
+    IntelligenceResult,
+    IntelligenceSource,
+    ResearchWorkflowEngine,
+    RiskFlag,
+)
+from .skill_discovery import CapabilityGap, DiscoveredSkill, SkillDiscovery
+from .task_scheduler import Task, TaskPriority, TaskScheduler, TaskStatus
+from .unified_router import (
+    INTENT_AGENT_MAP,
+    RouteResult,
+    UnifiedRouter,
+)
+from .user_file_manager import UserFileManager
+from .vertical_agent import (
+    AgentRegistry,
     AgentRequest,
     AgentResult,
     VerticalAgent,
-    AgentRegistry,
     get_agent_registry,
 )
-from hermes_os.memory_hub import (
-    MemoryHub,
-    ContextMemory,
-    IdentityMemory,
-    PreferencesMemory,
-    RecentContextMemory,
-    KnowledgeMemory,
-)
-from hermes_os.unified_router import (
-    UnifiedRouter,
-    RouteResult,
-    INTENT_AGENT_MAP,
-)
-from hermes_os.output_adapter import (
-    OutputStyle,
-    OutputAdapter,
+from .workflow_engine import (
+    IntentToWorkflowMapper,
+    Workflow,
+    WorkflowEngine,
+    WorkflowResult,
+    WorkflowStep,
 )
 
 __version__ = "0.3.0"

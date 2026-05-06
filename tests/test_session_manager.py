@@ -51,9 +51,7 @@ class TestSessionManager:
         assert s1.session_id != s2.session_id
 
     @pytest.mark.asyncio
-    async def test_get_or_create_session_has_timestamps(
-        self, manager: SessionManager
-    ) -> None:
+    async def test_get_or_create_session_has_timestamps(self, manager: SessionManager) -> None:
         """New session has created_at and last_active timestamps."""
         session = await manager.get_or_create("user_x")
 
@@ -117,9 +115,7 @@ class TestSessionManager:
         assert session.last_active >= original_last_active
 
     @pytest.mark.asyncio
-    async def test_add_message_creates_session_if_missing(
-        self, manager: SessionManager
-    ) -> None:
+    async def test_add_message_creates_session_if_missing(self, manager: SessionManager) -> None:
         """add_message on unknown user creates session first."""
         await manager.add_message("new_user", "user", "First message")
 
@@ -227,9 +223,7 @@ class TestConcurrentAddMessage:
 
         async def user_flow(uid: int) -> None:
             for i in range(msgs_per_user):
-                await concurrent_manager.add_message(
-                    f"user_{uid}", "user", f"U{uid}M{i}"
-                )
+                await concurrent_manager.add_message(f"user_{uid}", "user", f"U{uid}M{i}")
 
         await asyncio.gather(*[user_flow(uid) for uid in range(num_users)])
 
@@ -287,9 +281,7 @@ class TestSessionModel:
         )
 
     @pytest.mark.asyncio
-    async def test_add_message_preserves_existing_session_id(
-        self, manager: SessionManager
-    ) -> None:
+    async def test_add_message_preserves_existing_session_id(self, manager: SessionManager) -> None:
         """add_message does not change session_id for an existing session."""
         await manager.get_or_create("alice")
         original_id = manager._sessions["alice"].session_id

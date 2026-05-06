@@ -12,18 +12,17 @@
 """
 
 import pytest
-from dataclasses import dataclass
 
 from hermes_os.conclusion_extractor import (
-    ConclusionExtractor,
     ConclusionCard,
+    ConclusionExtractor,
     ConclusionLevel,
 )
-
 
 # ---------------------------------------------------------------------------
 # ConclusionCard dataclass tests
 # ---------------------------------------------------------------------------
+
 
 class TestConclusionCard:
     def test_conclusion_card_fields(self) -> None:
@@ -92,6 +91,7 @@ class TestConclusionLevel:
 # ---------------------------------------------------------------------------
 # ConclusionExtractor.extract_summary tests
 # ---------------------------------------------------------------------------
+
 
 class TestExtractSummaryBasic:
     @pytest.fixture
@@ -220,6 +220,7 @@ class TestExtractSummaryHeadsUp:
 # ---------------------------------------------------------------------------
 # Integration: extractor with GoalTracker context
 # ---------------------------------------------------------------------------
+
 
 class TestExtractWithGoalContext:
     @pytest.fixture

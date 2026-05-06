@@ -4,9 +4,9 @@ User data isolation is achieved through user_id field in a shared database,
 not through separate database files per user.
 """
 
-import pytest
 import os
-from pathlib import Path
+
+import pytest
 
 from hermes_os.task_scheduler import TaskScheduler, TaskStatus
 

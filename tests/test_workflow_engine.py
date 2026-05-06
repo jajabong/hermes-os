@@ -1,21 +1,21 @@
 """Tests for WorkflowEngine — intent-driven tool orchestration."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from dataclasses import dataclass
 
 from hermes_os.workflow_engine import (
-    WorkflowEngine,
-    WorkflowStep,
-    Workflow,
-    WorkflowResult,
     IntentToWorkflowMapper,
+    Workflow,
+    WorkflowEngine,
+    WorkflowResult,
+    WorkflowStep,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 async def engine() -> WorkflowEngine:
@@ -25,6 +25,7 @@ async def engine() -> WorkflowEngine:
 # ---------------------------------------------------------------------------
 # WorkflowStep & Workflow data model tests
 # ---------------------------------------------------------------------------
+
 
 class TestWorkflowStep:
     def test_workflow_step_creation(self) -> None:
@@ -112,6 +113,7 @@ class TestWorkflowResult:
 # IntentToWorkflowMapper tests
 # ---------------------------------------------------------------------------
 
+
 class TestIntentToWorkflowMapper:
     def test_map_check_project_status(self) -> None:
         mapper = IntentToWorkflowMapper()
@@ -139,6 +141,7 @@ class TestIntentToWorkflowMapper:
 # ---------------------------------------------------------------------------
 # WorkflowEngine execute tests
 # ---------------------------------------------------------------------------
+
 
 class TestWorkflowEngineExecute:
     @pytest.mark.asyncio
@@ -178,6 +181,7 @@ class TestWorkflowEngineExecute:
 # WorkflowEngine tool registration tests
 # ---------------------------------------------------------------------------
 
+
 class TestWorkflowEngineToolRegistry:
     def test_register_tool(self) -> None:
         engine = WorkflowEngine()
@@ -201,6 +205,7 @@ class TestWorkflowEngineToolRegistry:
 # ---------------------------------------------------------------------------
 # Output format tests
 # ---------------------------------------------------------------------------
+
 
 class TestWorkflowResultOutput:
     def test_feishu_card_format(self) -> None:

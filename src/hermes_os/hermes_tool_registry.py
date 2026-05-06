@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from hermes_os.workflow_engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +65,7 @@ class HermesToolRegistry:
         try:
             # Use importlib for controlled imports
             import importlib.util
+
             spec = importlib.util.spec_from_file_location(tool_file.stem, tool_file)
             if spec is None or spec.loader is None:
                 return
@@ -98,7 +103,7 @@ class HermesToolRegistry:
         """Get a handler by tool name, or None if not found."""
         return self._handlers.get(name)
 
-    def register_all_with(self, engine: "WorkflowEngine") -> None:
+    def register_all_with(self, engine: WorkflowEngine) -> None:
         """Register all discovered handlers with a WorkflowEngine instance."""
         for name, handler in self._handlers.items():
             engine.register_tool(name, handler)

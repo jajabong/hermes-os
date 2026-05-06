@@ -9,23 +9,23 @@ Each stage:
   - Updates meta.json with stage progress
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from datetime import datetime
+
+import pytest
 
 from hermes_os.pipeline_engine import (
-    PipelineEngine,
     PipelineDefinition,
+    PipelineEngine,
     PipelineStage,
     StageStatus,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def temp_dir() -> Path:
@@ -83,6 +83,7 @@ def engine(temp_dir: Path) -> PipelineEngine:
 # PipelineDefinition tests
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineDefinition:
     def test_load_from_yaml(self, sample_pipeline_yaml: Path) -> None:
         pd = PipelineDefinition.from_yaml(sample_pipeline_yaml)
@@ -105,6 +106,7 @@ class TestPipelineDefinition:
 # PipelineEngine tests
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineEngineInit:
     def test_init_sets_artifact_base(self, engine: PipelineEngine, temp_dir: Path) -> None:
         assert engine._artifact_base == temp_dir / "artifacts"
@@ -120,7 +122,9 @@ class TestPipelineExecution:
         assert (ws.root_path / "delivery").is_dir()
 
     @pytest.mark.asyncio
-    async def test_load_pipeline_workspace(self, engine: PipelineEngine, sample_pipeline_yaml: Path) -> None:
+    async def test_load_pipeline_workspace(
+        self, engine: PipelineEngine, sample_pipeline_yaml: Path
+    ) -> None:
         pd = PipelineDefinition.from_yaml(sample_pipeline_yaml)
         await engine.create_pipeline_workspace("pipeline-002", "book_pipeline")
         loaded = await engine.load_pipeline_workspace("pipeline-002")
@@ -198,6 +202,7 @@ class TestPipelineExecution:
 # ---------------------------------------------------------------------------
 # StageStatus tests
 # ---------------------------------------------------------------------------
+
 
 class TestStageStatus:
     def test_status_values(self) -> None:
@@ -352,7 +357,9 @@ class TestBrowserLabor:
     """Tests for BrowserLabor browser automation."""
 
     @pytest.mark.asyncio
-    async def test_browser_labor_returns_error_without_playwright(self, engine: PipelineEngine) -> None:
+    async def test_browser_labor_returns_error_without_playwright(
+        self, engine: PipelineEngine
+    ) -> None:
         """BrowserLabor should return error when Playwright is not installed."""
         ws = await engine.create_pipeline_workspace("browser-test-001", "test_pipeline")
 
@@ -375,7 +382,7 @@ class TestBrowserLabor:
     @pytest.mark.asyncio
     async def test_browser_labor_accepts_context_params(self, temp_dir: Path) -> None:
         """BrowserLabor should accept context parameters for different actions."""
-        from hermes_os.pipeline_engine import BrowserLabor, PipelineWorkspace
+        from hermes_os.pipeline_engine import BrowserLabor
 
         labor = BrowserLabor()
 
@@ -383,7 +390,11 @@ class TestBrowserLabor:
         contexts = [
             {"action": "navigate", "url": "https://example.com"},
             {"action": "screenshot", "url": "https://example.com", "filename": "test.png"},
-            {"action": "fill", "url": "https://example.com", "form_data": {"#email": "test@example.com"}},
+            {
+                "action": "fill",
+                "url": "https://example.com",
+                "form_data": {"#email": "test@example.com"},
+            },
             {"action": "extract", "url": "https://example.com", "selector": "h1"},
         ]
 
@@ -398,6 +409,7 @@ class TestBrowserLabor:
 # ParallelChapterLabor tests
 # ---------------------------------------------------------------------------
 
+
 class TestParallelChapterLabor:
     """TDD tests for ParallelChapterLabor — parallel chapter writing."""
 
@@ -405,10 +417,10 @@ class TestParallelChapterLabor:
     async def test_writes_chapters_in_parallel(self, temp_dir: Path) -> None:
         """ParallelChapterLabor should write multiple chapters in parallel."""
         from unittest.mock import AsyncMock, MagicMock, patch
+
         from hermes_os.pipeline_engine import (
             ParallelChapterLabor,
             PipelineWorkspace,
-            LaborResult,
         )
 
         # Create workspace with outline
@@ -457,7 +469,8 @@ class TestParallelChapterLabor:
     @pytest.mark.asyncio
     async def test_failure_threshold_triggers_stage_failure(self, temp_dir: Path) -> None:
         """When too many chapters fail, stage should fail."""
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, patch
+
         from hermes_os.pipeline_engine import ParallelChapterLabor, PipelineWorkspace
 
         ws_root = temp_dir / "artifacts" / "parallel-fail-001"
@@ -499,6 +512,7 @@ class TestParallelChapterLabor:
     async def test_partial_failure_allowed_under_threshold(self, temp_dir: Path) -> None:
         """Some chapter failures should be allowed if under threshold."""
         from unittest.mock import AsyncMock, MagicMock, patch
+
         from hermes_os.pipeline_engine import ParallelChapterLabor, PipelineWorkspace
 
         ws_root = temp_dir / "artifacts" / "parallel-partial-001"
@@ -604,6 +618,7 @@ stages:
 # PdfRenderLabor tests
 # ---------------------------------------------------------------------------
 
+
 class TestPdfRenderLabor:
     """TDD tests for PdfRenderLabor — Markdown → PDF via pandoc."""
 
@@ -611,6 +626,7 @@ class TestPdfRenderLabor:
     async def test_finds_pdf_engine(self) -> None:
         """PdfRenderLabor should detect available PDF engines."""
         from hermes_os.pipeline_engine import PdfRenderLabor
+
         labor = PdfRenderLabor()
         # Engine may or may not be installed, but method should not raise
         engine = labor._find_pdf_engine()
@@ -620,6 +636,7 @@ class TestPdfRenderLabor:
     async def test_renders_with_available_pdf_engine(self, temp_dir: Path) -> None:
         """PdfRenderLabor renders PDF when a PDF engine is installed."""
         from unittest.mock import MagicMock, patch
+
         from hermes_os.pipeline_engine import PdfRenderLabor, PipelineWorkspace
 
         ws_root = temp_dir / "artifacts" / "pdf-test-001"
@@ -664,6 +681,7 @@ class TestPdfRenderLabor:
     async def test_falls_back_to_html_when_no_pdf_engine(self, temp_dir: Path) -> None:
         """PdfRenderLabor produces HTML when no PDF engine is installed."""
         from unittest.mock import MagicMock, patch
+
         from hermes_os.pipeline_engine import PdfRenderLabor, PipelineWorkspace
 
         ws_root = temp_dir / "artifacts" / "pdf-test-003"
@@ -730,4 +748,3 @@ class TestPdfRenderLabor:
 
         assert result.success is False
         assert "not found" in result.error.lower()
-

@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class BatchResult:
     """Result of a batch pipeline execution."""
+
     workflow_id: str
     success: bool
     stages_completed: int
@@ -64,12 +65,14 @@ class BatchRunner:
         batch_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                batch_results.append(BatchResult(
-                    workflow_id=f"{configs[i].name}-{i}",
-                    success=False,
-                    stages_completed=0,
-                    error=str(result),
-                ))
+                batch_results.append(
+                    BatchResult(
+                        workflow_id=f"{configs[i].name}-{i}",
+                        success=False,
+                        stages_completed=0,
+                        error=str(result),
+                    )
+                )
             else:
                 batch_results.append(result)
 
@@ -88,8 +91,7 @@ class BatchRunner:
         """
         try:
             # Import here to avoid circular imports
-            from hermes_os.pipeline_engine_v2 import PipelineEngine, BatchArtifactMeta
-            from hermes_os.universal_pipeline import PipelineConfig
+            from hermes_os.pipeline_engine_v2 import BatchArtifactMeta, PipelineEngine
 
             # Create artifact workspace
             artifact_dir = self.base_dir / task_id

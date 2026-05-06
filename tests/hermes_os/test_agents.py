@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
-from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hermes_os.vertical_agent import AgentRequest, AgentResult
 from hermes_os.agents.chief_agent_adapter import ChiefAgentAdapter
 from hermes_os.agents.labor_agent_adapter import LaborAgentAdapter
-
+from hermes_os.vertical_agent import AgentRequest, AgentResult
 
 # ---------------------------------------------------------------------------
 # ChiefAgentAdapter tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_chief_agent_adapter_invoke_returns_agent_result() -> None:
@@ -60,6 +59,7 @@ async def test_chief_agent_adapter_handles_empty_message() -> None:
 # ---------------------------------------------------------------------------
 # LaborAgentAdapter tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_labor_agent_adapter_invoke_returns_agent_result() -> None:
@@ -134,6 +134,7 @@ async def test_labor_agent_adapter_maps_labor_failure() -> None:
 # ---------------------------------------------------------------------------
 # initialize_agents tests
 # ---------------------------------------------------------------------------
+
 
 def test_initialize_agents_registers_all_agents() -> None:
     """initialize_agents() should register ChiefAgent and all LaborAdapters."""

@@ -22,18 +22,15 @@ claude_code_invocator.py — Hermes OS 的 Claude Code 调用层
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import re
 import shutil
-import signal
 import subprocess
-import tempfile
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 import aiosqlite
 
@@ -136,7 +133,12 @@ def get_claude_env() -> dict[str, str]:
     try:
         # 尝试交互式 shell 获取完整 alias（包括 env 设置）
         result = subprocess.run(
-            ["zsh", "-i", "-c", "alias claude-mini 2>/dev/null || alias claude 2>/dev/null || echo NOT_FOUND"],
+            [
+                "zsh",
+                "-i",
+                "-c",
+                "alias claude-mini 2>/dev/null || alias claude 2>/dev/null || echo NOT_FOUND",
+            ],
             capture_output=True,
             text=True,
             timeout=10,
@@ -147,11 +149,13 @@ def get_claude_env() -> dict[str, str]:
             # 从 alias 中提取所有 KEY=VALUE 环境变量
             # 格式: env KEY1="val1" KEY2="val2" ... /path/to/binary --flags
             # 找到 'env' 后面的所有 KEY=VALUE 对
-            env_match = re.search(r'^[^=]+=\'env\s+(.+?)\s+/', alias_str, re.DOTALL)
+            env_match = re.search(r"^[^=]+=\'env\s+(.+?)\s+/", alias_str, re.DOTALL)
             if env_match:
                 env_part = env_match.group(1)
                 # 匹配 KEY="VALUE" 或 KEY='' 或 KEY=VALUE 格式
-                for match in re.finditer(r'(\w+)=["\']([^"\']*?)["\']|\.(\w+)=(["\']?)([^"\']*?)\3', env_part):
+                for match in re.finditer(
+                    r'(\w+)=["\']([^"\']*?)["\']|\.(\w+)=(["\']?)([^"\']*?)\3', env_part
+                ):
                     if match.group(1):  # KEY="VALUE" 格式
                         key, val = match.group(1), match.group(2)
                         if key.isupper():
@@ -168,7 +172,14 @@ def get_claude_env() -> dict[str, str]:
 
     # 如果 alias 解析失败，从当前进程环境继承
     if not env_vars:
-        for key in ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "NODE_TLS_REJECT_UNAUTHORIZED", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY"]:
+        for key in [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_BASE_URL",
+            "NODE_TLS_REJECT_UNAUTHORIZED",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+        ]:
             val = os.environ.get(key)
             if val:
                 env_vars[key] = val
@@ -300,15 +311,13 @@ async def invoke(
     )
 
     try:
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout_sec
-        )
-    except asyncio.TimeoutError:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+    except TimeoutError:
         # 超时：SIGTERM 强制终止
         proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), timeout=10)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
 
@@ -483,6 +492,7 @@ async def init_invocation_log(db_path: str | Path) -> None:
 # 健康检查
 # =============================================================================
 
+
 async def health_check(timeout_sec: int = 10) -> dict[str, Any]:
     """
     检查 claude -p 是否可用，返回诊断信息。
@@ -514,4 +524,3 @@ async def health_check(timeout_sec: int = 10) -> dict[str, Any]:
 # =============================================================================
 # 辅助
 # =============================================================================
-

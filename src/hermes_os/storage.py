@@ -139,9 +139,7 @@ class Storage:
         )
         await db.commit()
 
-    async def get_user_by_platform(
-        self, platform: str, platform_user_id: str
-    ) -> dict | None:
+    async def get_user_by_platform(self, platform: str, platform_user_id: str) -> dict | None:
         await self._lazy_initialize()
         db = await self._get_db()
         async with db.execute(
@@ -151,9 +149,7 @@ class Storage:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
-    async def save_message(
-        self, user_id: str, role: str, content: str, timestamp: str
-    ) -> None:
+    async def save_message(self, user_id: str, role: str, content: str, timestamp: str) -> None:
         await self._lazy_initialize()
         db = await self._get_db()
         await db.execute(
@@ -230,6 +226,7 @@ class Storage:
         await self._lazy_initialize()
         db = await self._get_db()
         from datetime import UTC, datetime
+
         await db.execute(
             """
             INSERT OR REPLACE INTO conversation_states
@@ -290,6 +287,7 @@ class Storage:
         await self._lazy_initialize()
         db = await self._get_db()
         from datetime import UTC, datetime
+
         timestamp = datetime.now(UTC).isoformat()
         await db.execute(
             """

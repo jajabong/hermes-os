@@ -5,14 +5,12 @@ The cache stores task_id → shard_db_name mappings to avoid O(n) scans.
 
 from __future__ import annotations
 
-import asyncio
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from hermes_os.shard_manager import ShardManager, ShardedStorage
-from hermes_os.task_scheduler import Task, TaskStatus, TaskPriority
+from hermes_os.shard_manager import ShardedStorage, ShardManager
+from hermes_os.task_scheduler import Task, TaskPriority, TaskStatus
 
 
 @pytest.fixture
@@ -61,7 +59,9 @@ async def test_get_task_uses_cache_not_scan(sharded_storage: ShardedStorage) -> 
 
     import unittest.mock as mock
 
-    with mock.patch.object(sharded_storage, "_scan_all_shards_for_task", new_callable=mock.AsyncMock) as mock_scan:
+    with mock.patch.object(
+        sharded_storage, "_scan_all_shards_for_task", new_callable=mock.AsyncMock
+    ) as mock_scan:
         mock_scan.return_value = None
         result = await sharded_storage.get_task("t-cache-hit-001")
 
@@ -92,7 +92,9 @@ async def test_update_task_status_uses_cache(sharded_storage: ShardedStorage) ->
 
     import unittest.mock as mock
 
-    with mock.patch.object(sharded_storage, "_scan_all_shards_for_task", new_callable=mock.AsyncMock) as mock_scan:
+    with mock.patch.object(
+        sharded_storage, "_scan_all_shards_for_task", new_callable=mock.AsyncMock
+    ) as mock_scan:
         mock_scan.return_value = None
         await sharded_storage.update_task_status("t-update-cache-001", "running", progress=0.5)
 
@@ -138,7 +140,9 @@ async def test_get_task_cache_miss_then_hit(sharded_storage: ShardedStorage) -> 
     # Second call - cache hit, scan NOT called
     import unittest.mock as mock
 
-    with mock.patch.object(sharded_storage, "_scan_all_shards_for_task", new_callable=mock.AsyncMock) as mock_scan:
+    with mock.patch.object(
+        sharded_storage, "_scan_all_shards_for_task", new_callable=mock.AsyncMock
+    ) as mock_scan:
         mock_scan.return_value = None
         result2 = await sharded_storage.get_task("t-miss-hit-001")
         assert result2 is not None

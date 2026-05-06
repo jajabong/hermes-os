@@ -43,6 +43,7 @@ Input content:
 @dataclass
 class PromotionResult:
     """Result of a promote_to_global() call."""
+
     success: bool
     global_path: str | None = None
     sanitized: bool = False
@@ -52,6 +53,7 @@ class PromotionResult:
 @dataclass
 class GovernanceConfig:
     """Configuration for governance behavior."""
+
     quality_threshold: float = _QUALITY_THRESHOLD
     global_wiki_base: Path = field(default_factory=lambda: _GLOBAL_WIKI_BASE)
     private_brain_base: Path = field(default_factory=lambda: _PRIVATE_BRAIN_BASE)
@@ -362,9 +364,7 @@ class GovernanceManager:
             logger.warning("LLM sanitization failed, using original content")
             return content
 
-    def _infer_category(
-        self, path: Path, rules: dict[str, Any] | None = None
-    ) -> str:
+    def _infer_category(self, path: Path, rules: dict[str, Any] | None = None) -> str:
         """Infer target category from path or rules."""
         if rules and "category" in rules:
             return rules["category"]

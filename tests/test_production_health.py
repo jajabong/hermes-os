@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 import pytest
 
 
@@ -14,8 +14,7 @@ class TestHealthCheckEndpoint:
     async def test_health_returns_components_status(self) -> None:
         """GET /health returns status for each component: db, knowledge, claude_binary, api_key, event_bus."""
         # This will fail until we implement the health endpoint
-        from fastapi.testclient import TestClient
-        from hermes_os.production.health import app, health_check
+        from hermes_os.production.health import health_check
 
         result = await health_check()
 
@@ -112,9 +111,10 @@ class TestHealthCheckEndpoint:
     @pytest.mark.asyncio
     async def test_health_timestamp_is_iso_format(self) -> None:
         """timestamp field is in ISO 8601 format."""
+        import re
+
         from hermes_os.production.health import health_check
 
-        import re
         result = await health_check()
         ts = result["timestamp"]
 
@@ -125,6 +125,7 @@ class TestHealthCheckEndpoint:
     async def test_health_endpoint_no_auth_required(self) -> None:
         """GET /health requires no authentication."""
         from fastapi.testclient import TestClient
+
         from hermes_os.production.health import app
 
         client = TestClient(app)
@@ -142,6 +143,7 @@ class TestHealthCheckHTTPResponse:
     async def test_health_http_200_when_healthy(self) -> None:
         """GET /health returns 200 when all components are up."""
         from fastapi.testclient import TestClient
+
         from hermes_os.production.health import app
 
         client = TestClient(app)
@@ -156,6 +158,7 @@ class TestHealthCheckHTTPResponse:
     async def test_health_http_503_when_unhealthy(self) -> None:
         """GET /health returns 503 when any critical component is down."""
         from fastapi.testclient import TestClient
+
         from hermes_os.production.health import app
 
         client = TestClient(app)
@@ -171,6 +174,7 @@ class TestHealthCheckHTTPResponse:
     async def test_health_response_is_json(self) -> None:
         """GET /health returns Content-Type: application/json."""
         from fastapi.testclient import TestClient
+
         from hermes_os.production.health import app
 
         client = TestClient(app)

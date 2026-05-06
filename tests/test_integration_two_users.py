@@ -17,6 +17,7 @@ from hermes_os.user_registry import UserRegistry
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def alice() -> User:
     return User(
@@ -84,6 +85,7 @@ def memory_router(mock_mem0_client: MagicMock) -> MemoryRouter:
 # ---------------------------------------------------------------------------
 # Core isolation tests
 # ---------------------------------------------------------------------------
+
 
 class TestSessionIsolation:
     """Verify sessions are completely isolated between users."""
@@ -258,9 +260,7 @@ class TestFullPipelineIsolation:
                 "msg_user_id": "bob_uid",
             }
 
-        alice_result, bob_result = await asyncio.gather(
-            alice_flow(), bob_flow()
-        )
+        alice_result, bob_result = await asyncio.gather(alice_flow(), bob_flow())
 
         assert alice_result["user_id"] == "alice_uid"
         assert alice_result["history_len"] == 2
@@ -316,10 +316,7 @@ class TestFullPipelineIsolation:
         user_registry.register(alice)
         user_registry.register(bob)
         router = UserRouter(
-            registry=user_registry,
-            sessions=session_manager,
-            memory=memory_router,
-            storage=storage
+            registry=user_registry, sessions=session_manager, memory=memory_router, storage=storage
         )
         # Note: Storage already initialized in fixture
 

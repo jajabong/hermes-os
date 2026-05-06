@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from hermes_os.shard_manager import ShardManager, ShardedStorage
-from hermes_os.task_scheduler import Task, TaskStatus, TaskPriority
+from hermes_os.shard_manager import ShardedStorage, ShardManager
+from hermes_os.task_scheduler import Task, TaskPriority, TaskStatus
 
 
 @pytest.fixture
@@ -65,7 +65,9 @@ async def test_update_task_status_commits(sharded_storage: ShardedStorage) -> No
 
     # Verify via direct query
     conn = await sharded_storage._get_db_for("alice")
-    async with conn.execute("SELECT status, progress FROM tasks WHERE task_id = ?", ("test-update-001",)) as cur:
+    async with conn.execute(
+        "SELECT status, progress FROM tasks WHERE task_id = ?", ("test-update-001",)
+    ) as cur:
         row = await cur.fetchone()
     assert row is not None
     assert row["status"] == "running"

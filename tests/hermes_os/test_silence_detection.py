@@ -9,18 +9,18 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Tests: conversation_states.last_message_at tracking
 # ---------------------------------------------------------------------------
 
+
 def test_conversation_states_has_last_message_at_column(tmp_path: Path) -> None:
     """The conversation_states table should have a last_message_at column for silence tracking."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -39,8 +39,7 @@ def test_conversation_states_has_last_message_at_column(tmp_path: Path) -> None:
 
 def test_add_message_updates_last_message_at(tmp_path: Path) -> None:
     """Adding a message should update last_message_at in conversation_states."""
-    import sqlite3
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -65,7 +64,7 @@ def test_add_message_updates_last_message_at(tmp_path: Path) -> None:
 
 def test_get_conversation_state_returns_last_message_at(tmp_path: Path) -> None:
     """get_conversation_state() should return last_message_at timestamp."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -81,7 +80,7 @@ def test_get_conversation_state_returns_last_message_at(tmp_path: Path) -> None:
 
 def test_last_message_at_persists_after_reconnect(tmp_path: Path) -> None:
     """last_message_at should persist across connection resets."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage1 = ShardedStorage(shard_manager=sm)
@@ -108,6 +107,7 @@ def test_last_message_at_persists_after_reconnect(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Tests: silence detection thresholds
 # ---------------------------------------------------------------------------
+
 
 def test_silence_threshold_constants_defined() -> None:
     """Silence threshold constants should be defined in proactive_engine."""
@@ -138,11 +138,12 @@ def test_silence_levels_are_distinct() -> None:
 # Tests: ProactiveEngine silence detection
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_detect_silent_users_returns_list(tmp_path: Path) -> None:
     """_detect_silent_users() should return a list of silent user dicts."""
     from hermes_os.proactive_engine import ProactiveEngine
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -192,7 +193,7 @@ async def test_detect_silent_users_returns_list(tmp_path: Path) -> None:
 async def test_detect_silent_users_classifies_by_threshold(tmp_path: Path) -> None:
     """Silent users should be classified by silence level (greeting/reminder/urgent)."""
     from hermes_os.proactive_engine import ProactiveEngine
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -202,14 +203,18 @@ async def test_detect_silent_users_classifies_by_threshold(tmp_path: Path) -> No
         await storage.add_message("u_25h", "user", "hello")
         conn = await storage._get_db_for("u_25h")
         old = (datetime.now(UTC) - timedelta(hours=25)).isoformat()
-        await conn.execute("UPDATE conversation_states SET last_message_at = ? WHERE user_id = ?", (old, "u_25h"))
+        await conn.execute(
+            "UPDATE conversation_states SET last_message_at = ? WHERE user_id = ?", (old, "u_25h")
+        )
         await conn.commit()
 
         # 100h silent -> reminder level
         await storage.add_message("u_100h", "user", "hello")
         conn2 = await storage._get_db_for("u_100h")
         old2 = (datetime.now(UTC) - timedelta(hours=100)).isoformat()
-        await conn2.execute("UPDATE conversation_states SET last_message_at = ? WHERE user_id = ?", (old2, "u_100h"))
+        await conn2.execute(
+            "UPDATE conversation_states SET last_message_at = ? WHERE user_id = ?", (old2, "u_100h")
+        )
         await conn2.commit()
 
     await setup()
@@ -233,7 +238,7 @@ async def test_detect_silent_users_classifies_by_threshold(tmp_path: Path) -> No
 async def test_on_user_silent_hook_is_called(tmp_path: Path) -> None:
     """on_user_silent(user_id, hours, level) should be called for each silent user."""
     from hermes_os.proactive_engine import ProactiveEngine
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -242,7 +247,10 @@ async def test_on_user_silent_hook_is_called(tmp_path: Path) -> None:
         await storage.add_message("u_silent", "user", "hello")
         conn = await storage._get_db_for("u_silent")
         old = (datetime.now(UTC) - timedelta(hours=30)).isoformat()
-        await conn.execute("UPDATE conversation_states SET last_message_at = ? WHERE user_id = ?", (old, "u_silent"))
+        await conn.execute(
+            "UPDATE conversation_states SET last_message_at = ? WHERE user_id = ?",
+            (old, "u_silent"),
+        )
         await conn.commit()
 
     await setup()
@@ -271,6 +279,7 @@ async def test_on_user_silent_hook_is_called(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Tests: proactive outreach messages
 # ---------------------------------------------------------------------------
+
 
 def test_silence_greeting_message_format() -> None:
     """_build_silence_greeting() should return a friendly greeting card."""
@@ -301,10 +310,11 @@ def test_silence_reminder_message_format() -> None:
 # Tests: ShardedStorage.add_message updates last_message_at
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_add_message_updates_last_message_at_on_every_call(tmp_path: Path) -> None:
     """Every add_message call should update last_message_at, not just the first."""
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -330,11 +340,12 @@ async def test_add_message_updates_last_message_at_on_every_call(tmp_path: Path)
 # Tests: silence detection wiring into deep_patrol
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_deep_patrol_calls_silence_detection(tmp_path: Path) -> None:
     """deep_patrol should call _detect_and_reach_out as part of patrol cycle."""
-    from hermes_os.proactive_engine import ProactiveEngine, _DEEP_PATROL_INTERVAL
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.proactive_engine import ProactiveEngine
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -343,7 +354,9 @@ async def test_deep_patrol_calls_silence_detection(tmp_path: Path) -> None:
     await storage.add_message("u_silent", "user", "hello")
     conn = await storage._get_db_for("u_silent")
     old = (datetime.now(UTC) - timedelta(hours=30)).isoformat()
-    await conn.execute("UPDATE conversation_states SET last_message_at = ? WHERE user_id = ?", (old, "u_silent"))
+    await conn.execute(
+        "UPDATE conversation_states SET last_message_at = ? WHERE user_id = ?", (old, "u_silent")
+    )
     await conn.commit()
 
     engine = ProactiveEngine()
@@ -373,11 +386,12 @@ async def test_deep_patrol_calls_silence_detection(tmp_path: Path) -> None:
 # Tests: no false positives on active users
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_recently_active_user_not_flagged_silent(tmp_path: Path) -> None:
     """Users who messaged within SILENCE_GREETING_HOURS should not be flagged."""
-    from hermes_os.proactive_engine import ProactiveEngine, SILENCE_GREETING_HOURS
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.proactive_engine import ProactiveEngine
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)

@@ -1,22 +1,21 @@
 """Tests for GovernanceLayer — dual-repo memory management."""
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from datetime import datetime, UTC
+
+import pytest
 
 from hermes_os.governance_layer import (
-    GovernanceManager,
-    GovernanceConfig,
-    PromotionResult,
     _QUALITY_THRESHOLD,
+    GovernanceConfig,
+    GovernanceManager,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 class TempGlobalWiki:
     """Creates a temporary global_wiki for testing."""
@@ -49,6 +48,7 @@ def temp_gwiki() -> Path:
 # GovernanceConfig tests
 # ---------------------------------------------------------------------------
 
+
 class TestGovernanceConfig:
     def test_default_quality_threshold(self) -> None:
         cfg = GovernanceConfig()
@@ -62,6 +62,7 @@ class TestGovernanceConfig:
 # ---------------------------------------------------------------------------
 # Quality evaluation (static helpers)
 # ---------------------------------------------------------------------------
+
 
 class TestQualityEvaluation:
     def test_high_quality_structured_content(self) -> None:
@@ -102,6 +103,7 @@ class TestQualityEvaluation:
 # Global wiki directory structure
 # ---------------------------------------------------------------------------
 
+
 class TestGlobalWikiStructure:
     def test_global_wiki_created_on_init(self, temp_gwiki: Path) -> None:
         cfg = GovernanceConfig(global_wiki_base=temp_gwiki)
@@ -113,6 +115,7 @@ class TestGlobalWikiStructure:
 # ---------------------------------------------------------------------------
 # promote_to_global tests
 # ---------------------------------------------------------------------------
+
 
 class TestPromoteToGlobal:
     @pytest.fixture
@@ -224,6 +227,7 @@ class TestPromoteToGlobal:
 # get_combined_context tests
 # ---------------------------------------------------------------------------
 
+
 class TestGetCombinedContext:
     @pytest.fixture
     def gm_with_indexers(self, temp_gwiki: Path) -> GovernanceManager:
@@ -239,9 +243,7 @@ class TestGetCombinedContext:
         return gm
 
     @pytest.mark.asyncio
-    async def test_combined_context_structure(
-        self, gm_with_indexers: GovernanceManager
-    ) -> None:
+    async def test_combined_context_structure(self, gm_with_indexers: GovernanceManager) -> None:
         result = await gm_with_indexers.get_combined_context("test_user", "test query")
         assert "results" in result
         assert "query" in result
@@ -260,6 +262,7 @@ class TestGetCombinedContext:
 # ---------------------------------------------------------------------------
 # _infer_category tests
 # ---------------------------------------------------------------------------
+
 
 class TestInferCategory:
     @pytest.fixture

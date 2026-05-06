@@ -73,7 +73,7 @@ class FormatLabor:
             logger.warning("M4_RENDERING: no content found to render")
             return False
 
-        except Exception as e:
+        except Exception:
             logger.exception("M4_RENDERING failed")
             return False
 

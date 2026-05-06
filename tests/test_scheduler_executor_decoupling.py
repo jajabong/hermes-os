@@ -3,9 +3,9 @@
 TaskScheduler.create_task only persists — execution is handled separately.
 """
 
-import pytest
-import asyncio
 import os
+
+import pytest
 
 from hermes_os.task_scheduler import TaskScheduler, TaskStatus
 

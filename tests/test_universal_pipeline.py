@@ -8,22 +8,20 @@ Tests:
 5. Audit gate blocks progression if quality < 0.8
 """
 
-import pytest
-import asyncio
-import tempfile
 import json
-import yaml
+import tempfile
 from pathlib import Path
 
+import pytest
+
 from hermes_os.pipeline_engine_v2 import (
+    BatchArtifactMeta,
     PipelineConfig,
-    PipelineStage,
     PipelineEngine,
     StageStatus,
-    BatchArtifactMeta,
-    verify_outline_completeness,
-    verify_evidence_density,
     verify_audit_score,
+    verify_evidence_density,
+    verify_outline_completeness,
 )
 
 
@@ -136,7 +134,14 @@ steps:
         config = PipelineConfig.from_yaml(yaml_content)
         assert len(config.steps) == 6
         stage_names = [s.stage for s in config.steps]
-        assert stage_names == ["M1_OUTLINE", "M2_RESEARCH", "M3_DRAFTING", "M4_RENDERING", "M5_AUDIT", "M6_DELIVERY"]
+        assert stage_names == [
+            "M1_OUTLINE",
+            "M2_RESEARCH",
+            "M3_DRAFTING",
+            "M4_RENDERING",
+            "M5_AUDIT",
+            "M6_DELIVERY",
+        ]
 
 
 class TestPipelineEngine:
@@ -147,6 +152,7 @@ class TestPipelineEngine:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.fixture
@@ -265,7 +271,9 @@ steps:
         assert engine.current_stage == "M6_DELIVERY"
 
     @pytest.mark.asyncio
-    async def test_meta_json_persists_after_advance(self, temp_dir: str, pipeline_yaml: str) -> None:
+    async def test_meta_json_persists_after_advance(
+        self, temp_dir: str, pipeline_yaml: str
+    ) -> None:
         """meta.json should be updated after each stage advance."""
         config = PipelineConfig.from_yaml(pipeline_yaml)
         meta = BatchArtifactMeta(
@@ -293,6 +301,7 @@ class TestStageVerification:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio

@@ -21,7 +21,6 @@ from typing import Any
 
 import aiosqlite
 
-
 # Path where transient skills are stored
 TRANSIENT_SKILLS_DIR = Path.home() / ".hermes" / "skills" / "_transient"
 SOLIDIFIED_SKILLS_DIR = Path.home() / ".hermes" / "skills"
@@ -30,6 +29,7 @@ SOLIDIFIED_SKILLS_DIR = Path.home() / ".hermes" / "skills"
 @dataclass
 class DiscoveredSkill:
     """A skill discovered from GitHub."""
+
     repo: str
     path: str
     name: str
@@ -47,6 +47,7 @@ class DiscoveredSkill:
 @dataclass
 class CapabilityGap:
     """A detected gap in Hermes OS capabilities."""
+
     gap_type: str  # "missing_agent", "missing_skill", "missing_knowledge"
     description: str
     context: str  # What task triggered this detection
@@ -69,10 +70,21 @@ class SkillDiscovery:
     8. Decide: solidify or discard
     """
 
-    def __init__(self, db_path: str = "hermes_os.db") -> None:
+    def __init__(
+        self,
+        db_path: str = "hermes_os.db",
+        solidify_threshold: float = 0.8,
+        solidify_min_uses: int = 3,
+        discard_threshold: float = 0.5,
+        discard_min_uses: int = 2,
+    ) -> None:
         self.db_path = db_path
         self._db: aiosqlite.Connection | None = None
         self._gh_available: bool | None = None
+        self._solidify_threshold = solidify_threshold
+        self._solidify_min_uses = solidify_min_uses
+        self._discard_threshold = discard_threshold
+        self._discard_min_uses = discard_min_uses
 
     async def _get_db(self) -> aiosqlite.Connection:
         if self._db is None:
@@ -189,9 +201,7 @@ class SkillDiscovery:
         """Get all unresolved capability gaps."""
         await self._lazy_init()
         db = await self._get_db()
-        async with db.execute(
-            "SELECT * FROM capability_gaps WHERE resolved = 0"
-        ) as cursor:
+        async with db.execute("SELECT * FROM capability_gaps WHERE resolved = 0") as cursor:
             rows = await cursor.fetchall()
             return [
                 CapabilityGap(
@@ -233,9 +243,11 @@ class SkillDiscovery:
     async def _search_via_gh(self, query: str, max_results: int) -> list[dict[str, Any]]:
         """Search via gh CLI."""
         cmd = [
-            "gh", "api",
+            "gh",
+            "api",
             f"/search/repositories?q={query}&sort=stars&per_page={max_results}",
-            "--jq", ".items[] | {full_name, description, stargazers_count, html_url, topics}"
+            "--jq",
+            ".items[] | {full_name, description, stargazers_count, html_url, topics}",
         ]
         try:
             result = subprocess.run(
@@ -254,6 +266,7 @@ class SkillDiscovery:
     async def _search_via_api(self, query: str, max_results: int) -> list[dict[str, Any]]:
         """Search via direct GitHub API (rate limited, use carefully)."""
         import os
+
         token = os.environ.get("GITHUB_TOKEN", "")
 
         headers = {
@@ -266,9 +279,14 @@ class SkillDiscovery:
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "-L", url,
-                "-H", f"Authorization: token {token}" if token else "",
-                "-H", "Accept: application/vnd.github.v3+json",
+                "curl",
+                "-s",
+                "-L",
+                url,
+                "-H",
+                f"Authorization: token {token}" if token else "",
+                "-H",
+                "Accept: application/vnd.github.v3+json",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -284,12 +302,10 @@ class SkillDiscovery:
                 }
                 for r in data.get("items", [])
             ]
-        except (asyncio.TimeoutError, json.JSONDecodeError, OSError):
+        except (TimeoutError, json.JSONDecodeError, OSError):
             return []
 
-    async def read_file_from_repo(
-        self, repo: str, path: str
-    ) -> str | None:
+    async def read_file_from_repo(self, repo: str, path: str) -> str | None:
         """Read a specific file from a GitHub repository.
 
         Uses gh CLI for authenticated requests, falls back to raw.githubusercontent.com.
@@ -297,11 +313,10 @@ class SkillDiscovery:
         if self._check_gh():
             cmd = ["gh", "api", f"/repos/{repo}/contents/{path}", "--jq", ".content"]
             try:
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=15
-                )
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
                 if result.returncode == 0:
                     import base64
+
                     content = result.stdout.strip()
                     # gh returns base64-encoded content with newlines
                     try:
@@ -315,13 +330,16 @@ class SkillDiscovery:
         url = f"https://raw.githubusercontent.com/{repo}/main/{path}"
         try:
             proc = await asyncio.create_subprocess_exec(
-                "curl", "-s", "-L", url,
+                "curl",
+                "-s",
+                "-L",
+                url,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
             return stdout.decode("utf-8")
-        except (asyncio.TimeoutError, OSError):
+        except (TimeoutError, OSError):
             return None
 
     # -------------------------------------------------------------------------
@@ -347,6 +365,7 @@ class SkillDiscovery:
 
         # Stars factor (log scale, max 0.3)
         import math
+
         score += min(0.3, math.log1p(stars) / 20)
 
         # Description relevance (max 0.2)
@@ -357,15 +376,13 @@ class SkillDiscovery:
 
         # Content quality checks (max 0.5)
         content_lower = content.lower()
-        has_trigger = any(kw in content_lower for kw in [
-            "when", "trigger", "if the user", "task", "skill"
-        ])
-        has_steps = any(kw in content_lower for kw in [
-            "step", "1.", "2.", "first", "then", "##"
-        ])
-        has_tools = any(kw in content_lower for kw in [
-            "tool", "bash", "read", "write", "edit", "terminal"
-        ])
+        has_trigger = any(
+            kw in content_lower for kw in ["when", "trigger", "if the user", "task", "skill"]
+        )
+        has_steps = any(kw in content_lower for kw in ["step", "1.", "2.", "first", "then", "##"])
+        has_tools = any(
+            kw in content_lower for kw in ["tool", "bash", "read", "write", "edit", "terminal"]
+        )
 
         if has_trigger:
             score += 0.15
@@ -404,7 +421,7 @@ class SkillDiscovery:
                 f"skills/{query.replace(' ', '-').lower()}/SKILL.md",
                 "SKILL.md",
                 "README.md",
-                f"agent.md",
+                "agent.md",
             ]:
                 content = await self.read_file_from_repo(repo, path_candidate)
                 if not content or len(content) < 200:
@@ -576,9 +593,14 @@ transient: true
         if not eff.get("found"):
             return "keep_transient"
 
-        if eff["success_rate"] >= 0.8 and eff["uses"] >= 3:
+        if (
+            eff["success_rate"] >= self._solidify_threshold
+            and eff["uses"] >= self._solidify_min_uses
+        ):
             decision = "solidify"
-        elif eff["success_rate"] < 0.5 and eff["uses"] >= 2:
+        elif (
+            eff["success_rate"] < self._discard_threshold and eff["uses"] >= self._discard_min_uses
+        ):
             decision = "discard"
         else:
             decision = "keep_transient"
@@ -647,6 +669,7 @@ transient: true
     async def _discard_skill(self, skill_name: str) -> None:
         """Remove a transient skill."""
         import shutil
+
         transient_path = TRANSIENT_SKILLS_DIR / skill_name
         if transient_path.exists():
             shutil.rmtree(transient_path)
@@ -685,9 +708,24 @@ transient: true
         # Simple keyword extraction + common patterns
         keywords = re.findall(r"[a-zA-Z]{4,}", task.lower())
         common = {
-            "agent", "task", "skill", "code", "review", "test",
-            "build", "deploy", "debug", "api", "web", "data",
-            "search", "learn", "write", "edit", "run", "file"
+            "agent",
+            "task",
+            "skill",
+            "code",
+            "review",
+            "test",
+            "build",
+            "deploy",
+            "debug",
+            "api",
+            "web",
+            "data",
+            "search",
+            "learn",
+            "write",
+            "edit",
+            "run",
+            "file",
         }
         significant = [k for k in keywords if k not in common]
 

@@ -16,7 +16,6 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -28,10 +27,10 @@ logger = logging.getLogger(__name__)
 # Default preference values when PREFERENCES.md doesn't exist
 DEFAULT_PREFERENCES = {
     "communication_style": "neutral",  # "formal" | "casual" | "brief"
-    "detail_level": "medium",          # "high" | "medium" | "low"
-    "language": "auto",                 # "zh" | "en" | "auto"
-    "tone": "neutral",                 # "technical" | "casual" | "neutral"
-    "format": "markdown",             # "markdown" | "plain" | "card"
+    "detail_level": "medium",  # "high" | "medium" | "low"
+    "language": "auto",  # "zh" | "en" | "auto"
+    "tone": "neutral",  # "technical" | "casual" | "neutral"
+    "format": "markdown",  # "markdown" | "plain" | "card"
     "max_length": 2000,
     "timezone": "Asia/Shanghai",
     "active_hours": [9, 10, 11, 14, 15, 16, 17, 20, 21],
@@ -42,6 +41,7 @@ DEFAULT_PREFERENCES = {
 # Dataclasses
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ContextMemory:
     """Aggregated memory context from all 4 layers."""
@@ -50,12 +50,13 @@ class ContextMemory:
     preferences: dict[str, Any] = field(default_factory=dict)
     recent_results: list[dict] = field(default_factory=list)
     long_term_results: list[dict] = field(default_factory=list)
-    brain_index: "BrainIndex | None" = None
+    brain_index: BrainIndex | None = None
 
 
 # ---------------------------------------------------------------------------
 # L1: Identity Memory
 # ---------------------------------------------------------------------------
+
 
 class IdentityMemory:
     """L1: Reads/writes brain/USER.md.
@@ -118,14 +119,13 @@ class IdentityMemory:
 
     async def _write_file(self, path: Path, content: str) -> None:
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None, lambda: path.write_text(content, encoding="utf-8")
-        )
+        await loop.run_in_executor(None, lambda: path.write_text(content, encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
 # L2: Preferences Memory
 # ---------------------------------------------------------------------------
+
 
 class PreferencesMemory:
     """L2: Reads/writes brain/PREFERENCES.md.
@@ -181,14 +181,13 @@ class PreferencesMemory:
 
     async def _write_file(self, path: Path, content: str) -> None:
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None, lambda: path.write_text(content, encoding="utf-8")
-        )
+        await loop.run_in_executor(None, lambda: path.write_text(content, encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
 # L3: Recent Context Memory (mem0 wrapper)
 # ---------------------------------------------------------------------------
+
 
 class RecentContextMemory:
     """L3: Wraps MemoryRouter (mem0) for recent conversation context.
@@ -196,23 +195,22 @@ class RecentContextMemory:
     Falls back to no-op when mem0 is unavailable.
     """
 
-    def __init__(self, memory_router: Any) -> None:
+    def __init__(self, memory_router: Any, user_id: str = "default") -> None:
         self._router = memory_router
+        self._user_id = user_id
 
     async def search(self, query: str, limit: int = 5) -> list[dict]:
         """Search recent context via mem0. Returns [] when mem0 unavailable."""
         if self._router is None:
             return []
         try:
-            # MemoryRouter.search takes (user, query, limit)
-            # We need to pass a mock User-like object with user_id
             class _DummyUser:
                 user_id: str
-            dummy_user = _DummyUser()
-            dummy_user.user_id = getattr(self._router, "_user_id", "default")
 
-            # Actually use the router directly since it doesn't need user context for search
-            result = await self._router.search(query, limit=limit)
+            dummy_user = _DummyUser()
+            dummy_user.user_id = self._user_id
+
+            result = await self._router.search(dummy_user, query, limit=limit)
             return result
         except Exception as e:
             logger.warning("[RecentContextMemory] search failed: %s", e)
@@ -232,18 +230,20 @@ class RecentContextMemory:
 # L4: Knowledge Memory (BrainIndexer wrapper)
 # ---------------------------------------------------------------------------
 
+
 class KnowledgeMemory:
     """L4: Wraps BrainIndexer for long-term wiki knowledge search."""
 
-    def __init__(self, brain_indexer: Any) -> None:
+    def __init__(self, brain_indexer: Any, user_id: str = "default") -> None:
         self._indexer = brain_indexer
+        self._user_id = user_id
 
     async def search(self, query: str, limit: int = 5) -> list[dict]:
         """Search wiki knowledge via BrainIndexer. Returns [] when not found."""
         if self._indexer is None:
             return []
         try:
-            results = await self._indexer.search_wiki(query=query)
+            results = await self._indexer.search_wiki(user_id=self._user_id, keyword=query)
             return results[:limit]
         except Exception as e:
             logger.warning("[KnowledgeMemory] search failed: %s", e)
@@ -253,6 +253,7 @@ class KnowledgeMemory:
 # ---------------------------------------------------------------------------
 # MemoryHub — Unified 4-layer interface
 # ---------------------------------------------------------------------------
+
 
 class MemoryHub:
     """Unified 4-layer memory interface for Main Hermes.
@@ -300,19 +301,21 @@ class MemoryHub:
         if memory_router is None:
             try:
                 from hermes_os.memory_router import MemoryRouter
+
                 memory_router = MemoryRouter()
             except Exception:
                 memory_router = None
-        self._recent = RecentContextMemory(memory_router=memory_router)
+        self._recent = RecentContextMemory(memory_router=memory_router, user_id=user_id)
 
         # L4: Knowledge (BrainIndexer)
         if brain_indexer is None:
             try:
                 from hermes_os.brain_indexer import BrainIndexer
+
                 brain_indexer = BrainIndexer()
             except Exception:
                 brain_indexer = None
-        self._knowledge = KnowledgeMemory(brain_indexer=brain_indexer)
+        self._knowledge = KnowledgeMemory(brain_indexer=brain_indexer, user_id=user_id)
 
         # Brain indexer reference for get_context
         self._brain_indexer = brain_indexer
@@ -351,7 +354,9 @@ class MemoryHub:
             brain_index=brain_index,
         )
 
-    async def store(self, content: str, layer: str = "recent", metadata: dict | None = None) -> None:
+    async def store(
+        self, content: str, layer: str = "recent", metadata: dict | None = None
+    ) -> None:
         """Store content to the specified layer.
 
         Args:

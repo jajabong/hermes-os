@@ -4,20 +4,22 @@ Instead of overwriting old goals, we record an "evolution path" so the system
 can answer "why did the goal change?" and help users recover context.
 """
 
-import pytest
 import os
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-from hermes_os.goal_tracker import GoalTracker, GoalPattern
+import pytest
 
+from hermes_os.goal_tracker import GoalTracker
 
 # ---------------------------------------------------------------------------
 # EvolutionEntry and EvolutionLog
 # ---------------------------------------------------------------------------
 
+
 class TestEvolutionEntry:
     def test_evolution_entry_fields(self) -> None:
         from hermes_os.goal_tracker import EvolutionEntry
+
         entry = EvolutionEntry(
             goal_id="g1",
             timestamp=datetime.now(UTC),
@@ -34,6 +36,7 @@ class TestEvolutionEntry:
 # ---------------------------------------------------------------------------
 # append_evolution_log
 # ---------------------------------------------------------------------------
+
 
 class TestGoalEvolution:
     @pytest.fixture
@@ -132,7 +135,9 @@ class TestGoalEvolution:
         )
 
         await tracker.append_evolution_log(goal.goal_id, "中期目标", "第一个改变", "user_input")
-        await tracker.append_evolution_log(goal.goal_id, "最终目标", "用户明确最终方向", "user_input")
+        await tracker.append_evolution_log(
+            goal.goal_id, "最终目标", "用户明确最终方向", "user_input"
+        )
 
         latest = await tracker.get_latest_evolution_reason(goal.goal_id)
         assert latest == "用户明确最终方向"
@@ -141,6 +146,7 @@ class TestGoalEvolution:
 # ---------------------------------------------------------------------------
 # get_context_with_evolution
 # ---------------------------------------------------------------------------
+
 
 class TestGetContextWithEvolution:
     @pytest.fixture
@@ -229,7 +235,7 @@ class TestEvolutionEdgeCases:
         for i, trigger in enumerate(triggers):
             await tracker.append_evolution_log(
                 goal.goal_id,
-                f"目标版本{i+1}",
+                f"目标版本{i + 1}",
                 f"触发原因{i}",
                 trigger=trigger,
             )
@@ -276,6 +282,7 @@ class TestEvolutionEdgeCases:
     async def test_evolution_timestamps_increasing(self, tracker: GoalTracker) -> None:
         """Evolution timestamps are in chronological order."""
         import time
+
         await tracker.initialize()
         goal = await tracker.create_goal(
             user_id="alice",

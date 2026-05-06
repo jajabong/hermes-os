@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from hermes_os.shard_manager import ShardManager, ShardedStorage
+from hermes_os.shard_manager import ShardedStorage, ShardManager
 
 
 @pytest.fixture
@@ -37,6 +37,7 @@ def test_get_stats_reflects_user_count(sm: ShardManager, tmp_path: Path) -> None
         db_path = sm.db_path_for(user_id)
         db_path.parent.mkdir(parents=True, exist_ok=True)
         import sqlite3
+
         conn = sqlite3.connect(str(db_path))
         conn.execute("CREATE TABLE IF NOT EXISTS messages (id INTEGER)")
         conn.execute("CREATE TABLE IF NOT EXISTS sessions (id INTEGER)")

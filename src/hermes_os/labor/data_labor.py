@@ -10,10 +10,8 @@ M3_REASONING uses ResearchLabor, M5_INSIGHT uses ContentLabor.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
@@ -79,7 +77,7 @@ class DataLabor:
 
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M1_DATAFETCH failed")
             return False
 
@@ -100,12 +98,14 @@ class DataLabor:
 
             # Save normalized data
             normalized_file = data_dir / "normalized.json"
-            normalized_file.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+            normalized_file.write_text(
+                json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
             logger.info("M2_NORMALIZE: normalized %d items", len(normalized.get("items", [])))
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M2_NORMALIZE failed")
             return False
 
@@ -128,12 +128,14 @@ class DataLabor:
 
             # Save chart specs
             charts_file = data_dir / "charts.json"
-            charts_file.write_text(json.dumps(charts, ensure_ascii=False, indent=2), encoding="utf-8")
+            charts_file.write_text(
+                json.dumps(charts, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
             logger.info("M4_VISUALIZE: generated %d charts", len(charts.get("charts", [])))
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M4_VISUALIZE failed")
             return False
 
@@ -141,7 +143,11 @@ class DataLabor:
         """Normalize raw data by removing nulls, structuring fields."""
         if isinstance(raw_data, dict):
             # Remove null and undefined values
-            cleaned = {k: v for k, v in raw_data.items() if v is not None and v != "null" and v != "undefined"}
+            cleaned = {
+                k: v
+                for k, v in raw_data.items()
+                if v is not None and v != "null" and v != "undefined"
+            }
             # Recursively clean nested dicts
             for k, v in cleaned.items():
                 if isinstance(v, (dict, list)):
@@ -156,6 +162,7 @@ class DataLabor:
 # ---------------------------------------------------------------------------
 # Data fetching functions (real API implementations)
 # ---------------------------------------------------------------------------
+
 
 async def fetch_github_data(query: str, meta: dict[str, Any]) -> dict[str, Any]:
     """Fetch data from GitHub REST API via gh CLI.
@@ -200,23 +207,26 @@ async def fetch_github_data(query: str, meta: dict[str, Any]) -> dict[str, Any]:
             }
 
         import json
+
         data = json.loads(stdout.decode("utf-8", errors="replace"))
 
         # Normalize GitHub REST API response shape
         items = data.get("items", []) if isinstance(data, dict) else []
         repos = []
         for item in items:
-            repos.append({
-                "name": item.get("name", ""),
-                "full_name": item.get("full_name", ""),
-                "stars": item.get("stargazers_count", 0),
-                "forks": item.get("forks_count", 0),
-                "language": item.get("language", ""),
-                "description": item.get("description", ""),
-                "html_url": item.get("html_url", ""),
-                "created_at": item.get("created_at", ""),
-                "updated_at": item.get("updated_at", ""),
-            })
+            repos.append(
+                {
+                    "name": item.get("name", ""),
+                    "full_name": item.get("full_name", ""),
+                    "stars": item.get("stargazers_count", 0),
+                    "forks": item.get("forks_count", 0),
+                    "language": item.get("language", ""),
+                    "description": item.get("description", ""),
+                    "html_url": item.get("html_url", ""),
+                    "created_at": item.get("created_at", ""),
+                    "updated_at": item.get("updated_at", ""),
+                }
+            )
 
         return {
             "source": "github",
@@ -244,7 +254,17 @@ def _mock_github_data(query: str, meta: dict[str, Any]) -> dict[str, Any]:
         "source": "github",
         "query": query,
         "repos": [
-            {"name": f"repo-{i}", "full_name": f"example/repo-{i}", "stars": 100 * i, "forks": 20 * i, "language": "Python", "description": "", "html_url": "", "created_at": "", "updated_at": ""}
+            {
+                "name": f"repo-{i}",
+                "full_name": f"example/repo-{i}",
+                "stars": 100 * i,
+                "forks": 20 * i,
+                "language": "Python",
+                "description": "",
+                "html_url": "",
+                "created_at": "",
+                "updated_at": "",
+            }
             for i in range(1, 4)
         ],
         "fetched_at": str(meta.get("timestamp", "now")),
@@ -270,7 +290,11 @@ async def fetch_feishu_data(query: str, meta: dict[str, Any]) -> dict[str, Any]:
             "source": "feishu",
             "query": query,
             "docs": [
-                {"title": f"Document {i}", "doc_id": f"doc_{i}", "url": f"https://feishu.cn/doc/{i}"}
+                {
+                    "title": f"Document {i}",
+                    "doc_id": f"doc_{i}",
+                    "url": f"https://feishu.cn/doc/{i}",
+                }
                 for i in range(1, 3)
             ],
             "error": "no_credentials",
@@ -315,6 +339,7 @@ async def fetch_web_data(query: str, meta: dict[str, Any]) -> dict[str, Any]:
         )
 
         import aiohttp
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status != 200:
@@ -331,11 +356,13 @@ async def fetch_web_data(query: str, meta: dict[str, Any]) -> dict[str, Any]:
         items = data.get("items", [])
         results = []
         for item in items:
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("link", ""),
-                "snippet": item.get("snippet", ""),
-            })
+            results.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("link", ""),
+                    "snippet": item.get("snippet", ""),
+                }
+            )
 
         return {
             "source": "web",
@@ -402,37 +429,45 @@ async def fetch_wiki_data(query: str, meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def generate_chart(data: dict[str, Any], chart_type: str, meta: dict[str, Any]) -> dict[str, Any]:
+async def generate_chart(
+    data: dict[str, Any], chart_type: str, meta: dict[str, Any]
+) -> dict[str, Any]:
     """Generate chart specifications from data."""
     metrics = data.get("metrics", [])
 
     charts = []
     for metric in metrics:
         if isinstance(metric, dict) and "values" in metric:
-            charts.append({
-                "type": chart_type,
-                "metric": metric.get("name", "unknown"),
-                "data": metric.get("values", []),
-                "labels": [f"Point {i+1}" for i in range(len(metric.get("values", [])))],
-            })
+            charts.append(
+                {
+                    "type": chart_type,
+                    "metric": metric.get("name", "unknown"),
+                    "data": metric.get("values", []),
+                    "labels": [f"Point {i + 1}" for i in range(len(metric.get("values", [])))],
+                }
+            )
         elif isinstance(metric, list):
             # Handle list of metrics
-            charts.append({
-                "type": chart_type,
-                "metric": "dataset",
-                "data": metric,
-            })
+            charts.append(
+                {
+                    "type": chart_type,
+                    "metric": "dataset",
+                    "data": metric,
+                }
+            )
 
     # If no structured metrics, try to extract from repos/items
     if not charts and "repos" in data:
         repos = data["repos"]
         if isinstance(repos, list) and len(repos) > 0:
-            charts.append({
-                "type": "bar",
-                "metric": "stars",
-                "data": [r.get("stars", 0) for r in repos],
-                "labels": [r.get("name", f"repo-{i}") for i, r in enumerate(repos)],
-            })
+            charts.append(
+                {
+                    "type": "bar",
+                    "metric": "stars",
+                    "data": [r.get("stars", 0) for r in repos],
+                    "labels": [r.get("name", f"repo-{i}") for i, r in enumerate(repos)],
+                }
+            )
 
     return {"charts": charts}
 

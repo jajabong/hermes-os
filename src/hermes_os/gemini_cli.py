@@ -15,14 +15,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
 import shutil
-import subprocess
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, AsyncGenerator
-
+from typing import Any
 
 # =============================================================================
 # 配置
@@ -36,6 +34,7 @@ DEFAULT_TIMEOUT_SEC = 120
 @dataclass
 class GeminiResult:
     """一次 gemini -p 调用的结果"""
+
     stdout: str
     stderr: str
     exit_code: int
@@ -103,14 +102,12 @@ async def invoke(
     )
 
     try:
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout_sec
-        )
-    except asyncio.TimeoutError:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+    except TimeoutError:
         proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), timeout=10)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
 

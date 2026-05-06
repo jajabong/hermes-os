@@ -5,17 +5,16 @@ All settings are prefixed with HERMES_ and loaded from environment variables.
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from typing import Any
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_cached_instance: "HermesSettings | None" = None
+_cached_instance: HermesSettings | None = None
 
 
-def _get_cached_instance() -> "HermesSettings | None":
+def _get_cached_instance() -> HermesSettings | None:
     global _cached_instance
     return _cached_instance
 
@@ -50,21 +49,25 @@ class HermesSettings(BaseSettings):
     )
 
     hermes_db_path: str = Field(default="hermes.db", validation_alias="HERMES_DB_PATH")
-    knowledge_db_path: str = Field(default="hermes_knowledge.db", validation_alias="HERMES_KNOWLEDGE_DB_PATH")
+    knowledge_db_path: str = Field(
+        default="hermes_knowledge.db", validation_alias="HERMES_KNOWLEDGE_DB_PATH"
+    )
     anthropic_api_key: str = Field(default="", validation_alias="HERMES_ANTHROPIC_API_KEY")
     log_level: str = Field(default="INFO", validation_alias="HERMES_LOG_LEVEL")
     port: int = Field(default=8080, validation_alias="HERMES_PORT")
 
     enable_event_loop: bool = Field(default=True, validation_alias="HERMES_ENABLE_EVENT_LOOP")
     enable_proactive: bool = Field(default=True, validation_alias="HERMES_ENABLE_PROACTIVE")
-    enable_health_endpoint: bool = Field(default=True, validation_alias="HERMES_ENABLE_HEALTH_ENDPOINT")
+    enable_health_endpoint: bool = Field(
+        default=True, validation_alias="HERMES_ENABLE_HEALTH_ENDPOINT"
+    )
 
     # cors_origins — reads HERMES_CORS_ORIGINS manually to avoid pydantic-settings
     # JSON-list decoding issues with comma-separated values. The validator below
     # handles the parsing from raw env string.
     cors_origins: list[str] = Field(default_factory=list)
 
-    def __new__(cls) -> "HermesSettings":
+    def __new__(cls) -> HermesSettings:
         global _cached_instance
         if _cached_instance is None:
             _cached_instance = super().__new__(cls)
@@ -81,6 +84,7 @@ class HermesSettings(BaseSettings):
     def parse_cors_origins(cls, v: Any) -> list[str]:
         """Parse HERMES_CORS_ORIGINS from raw env string or from model data."""
         import os as _os
+
         raw = _os.environ.get("HERMES_CORS_ORIGINS", "")
         if not raw:
             # Fall back to whatever was passed in (validator chaining)
@@ -92,6 +96,7 @@ class HermesSettings(BaseSettings):
         # Try JSON first: ["https://a.com", "https://b.com"]
         if raw.startswith("["):
             import json
+
             try:
                 return json.loads(raw)
             except Exception:

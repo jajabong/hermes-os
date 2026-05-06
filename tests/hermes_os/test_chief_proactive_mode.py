@@ -5,17 +5,15 @@ Run with: pytest tests/hermes_os/test_chief_proactive_mode.py -v
 
 from __future__ import annotations
 
-import asyncio
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Tests: ProactiveEngine wires ChiefAgent for proactive suggestions
 # ---------------------------------------------------------------------------
+
 
 def test_proactive_engine_has_set_chief_agent() -> None:
     """ProactiveEngine should have set_chief_agent() for DI."""
@@ -28,8 +26,8 @@ def test_proactive_engine_has_set_chief_agent() -> None:
 @pytest.mark.asyncio
 async def test_proactive_engine_stores_chief_agent(tmp_path: Path) -> None:
     """set_chief_agent should store the ChiefAgent instance."""
-    from hermes_os.proactive_engine import ProactiveEngine
     from hermes_os.chief_agent import ChiefAgent
+    from hermes_os.proactive_engine import ProactiveEngine
 
     engine = ProactiveEngine()
     chief = ChiefAgent()
@@ -42,11 +40,12 @@ async def test_proactive_engine_stores_chief_agent(tmp_path: Path) -> None:
 # Tests: get_proactive_suggestions calls ChiefAgent.get_proactive_suggestions
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_proactive_suggestions_calls_chief_agent(tmp_path: Path) -> None:
     """ProactiveEngine.get_suggestions_for_user should delegate to ChiefAgent."""
-    from hermes_os.proactive_engine import ProactiveEngine
     from hermes_os.chief_agent import ChiefAgent
+    from hermes_os.proactive_engine import ProactiveEngine
 
     engine = ProactiveEngine()
     scheduler_mock = MagicMock()
@@ -55,7 +54,9 @@ async def test_proactive_suggestions_calls_chief_agent(tmp_path: Path) -> None:
 
     chief = ChiefAgent()
     # Mock ChiefAgent.get_proactive_suggestions
-    chief.get_proactive_suggestions = AsyncMock(return_value=["Test suggestion 1", "Test suggestion 2"])
+    chief.get_proactive_suggestions = AsyncMock(
+        return_value=["Test suggestion 1", "Test suggestion 2"]
+    )
     engine.set_chief_agent(chief)
 
     suggestions = await engine.get_suggestions_for_user("u_test")
@@ -68,10 +69,11 @@ async def test_proactive_suggestions_calls_chief_agent(tmp_path: Path) -> None:
 # Tests: chief_agent wired in gateway_hook
 # ---------------------------------------------------------------------------
 
+
 def test_gateway_hook_wires_chief_agent_into_proactive_engine(tmp_path: Path) -> None:
     """gateway_hook should create ChiefAgent and wire it into ProactiveEngine."""
-    from hermes_os.gateway_hook import HermesOSHook, HookConfig
     from hermes_os.chief_agent import ChiefAgent
+    from hermes_os.gateway_hook import HermesOSHook, HookConfig
 
     config = HookConfig(enable_event_loop=False)
     hook = HermesOSHook(config=config)
@@ -87,11 +89,12 @@ def test_gateway_hook_wires_chief_agent_into_proactive_engine(tmp_path: Path) ->
 # Tests: _deep_patrol calls _patrol_proactive_suggestions
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_deep_patrol_calls_proactive_suggestions_patrol(tmp_path: Path) -> None:
     """deep_patrol should call _patrol_proactive_suggestions."""
-    from hermes_os.proactive_engine import ProactiveEngine
     from hermes_os.chief_agent import ChiefAgent
+    from hermes_os.proactive_engine import ProactiveEngine
 
     engine = ProactiveEngine()
     scheduler_mock = MagicMock()
@@ -121,10 +124,11 @@ async def test_deep_patrol_calls_proactive_suggestions_patrol(tmp_path: Path) ->
 # Tests: proactive suggestions included in silence outreach reminder
 # ---------------------------------------------------------------------------
 
+
 def test_silence_reminder_includes_chief_suggestions(tmp_path: Path) -> None:
     """_build_silence_reminder should include ChiefAgent proactive suggestions."""
-    from hermes_os.proactive_engine import ProactiveEngine
     from hermes_os.chief_agent import ChiefAgent
+    from hermes_os.proactive_engine import ProactiveEngine
 
     engine = ProactiveEngine()
     scheduler_mock = MagicMock()
@@ -140,12 +144,15 @@ def test_silence_reminder_includes_chief_suggestions(tmp_path: Path) -> None:
 
     assert "Dana" in msg
     assert "72" in msg
-    assert any(kw in msg for kw in ["报告", "会议"]), f"Reminder should mention pending tasks, got: {msg}"
+    assert any(kw in msg for kw in ["报告", "会议"]), (
+        f"Reminder should mention pending tasks, got: {msg}"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Tests: no false positives — empty suggestions return empty string
 # ---------------------------------------------------------------------------
+
 
 def test_build_silence_reminder_empty_tasks_shows_generic_message(tmp_path: Path) -> None:
     """When no pending tasks, reminder should show generic message."""
@@ -163,12 +170,13 @@ def test_build_silence_reminder_empty_tasks_shows_generic_message(tmp_path: Path
 # Tests: patrol loops over all active users, not just known ones
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_patrol_proactive_suggestions_iterates_all_shard_users(tmp_path: Path) -> None:
     """_patrol_proactive_suggestions should check all users in shard DBs."""
-    from hermes_os.proactive_engine import ProactiveEngine
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
     from hermes_os.chief_agent import ChiefAgent
+    from hermes_os.proactive_engine import ProactiveEngine
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     sm = ShardManager(base_path=tmp_path, num_shards=100)
     storage = ShardedStorage(shard_manager=sm)
@@ -205,11 +213,12 @@ async def test_patrol_proactive_suggestions_iterates_all_shard_users(tmp_path: P
 # Tests: get_suggestions_for_user falls back gracefully when no scheduler
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_suggestions_for_user_no_scheduler_returns_empty(tmp_path: Path) -> None:
     """When no scheduler is set, get_suggestions_for_user should return [] without error."""
-    from hermes_os.proactive_engine import ProactiveEngine
     from hermes_os.chief_agent import ChiefAgent
+    from hermes_os.proactive_engine import ProactiveEngine
 
     engine = ProactiveEngine()
     engine._scheduler = None

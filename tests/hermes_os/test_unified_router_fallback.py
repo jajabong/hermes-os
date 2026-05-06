@@ -5,13 +5,11 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
 
 def test_fallback_uses_chief_agent_adapter_when_agent_not_found() -> None:
     """When get_agent raises ValueError, fallback to ChiefAgent via adapter."""
-    from hermes_os.unified_router import UnifiedRouter, RouteResult
-    from hermes_os.vertical_agent import AgentRegistry, AgentRequest, AgentResult
+    from hermes_os.unified_router import RouteResult, UnifiedRouter
+    from hermes_os.vertical_agent import AgentRegistry
 
     # Create fresh registry with ONLY a known agent
     reg = AgentRegistry()
@@ -54,7 +52,7 @@ def test_route_result_metadata_has_intent_and_agent() -> None:
 
 def test_route_stores_fallback_response_in_memory() -> None:
     """When fallback succeeds, the response should still be stored in memory."""
-    from hermes_os.unified_router import UnifiedRouter, RouteResult
+    from hermes_os.unified_router import UnifiedRouter
     from hermes_os.vertical_agent import AgentRegistry
 
     reg = AgentRegistry()
@@ -85,6 +83,10 @@ def test_route_stores_fallback_response_in_memory() -> None:
     mock_hub.initialize = AsyncMock()
     mock_hub.get_context = AsyncMock(return_value=MagicMock())
     mock_hub.store = AsyncMock()
+    mock_hub.get_preferences = AsyncMock(
+        return_value={"communication_style": "brief", "language": "zh"}
+    )
+    mock_hub.get_identity = AsyncMock(return_value={"name": "FallbackUser", "role": "user"})
 
     router._memory_hub_factory = MagicMock(return_value=mock_hub)
 

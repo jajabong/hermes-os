@@ -10,11 +10,11 @@ Deployment Pipeline stages:
 - M5_FINALIZE: Record release result
 """
 
-import pytest
-import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from hermes_os.labor.browser_labor import BrowserLabor
 
@@ -27,6 +27,7 @@ class TestBrowserLaborInterface:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -54,7 +55,13 @@ class TestDeploymentPipelineStages:
         loader = UniversalPipelineLoader()
         config = loader.load_pipeline("deployment")
         stages = [s.stage for s in config.steps]
-        assert stages == ["M1_STATEDAUTH", "M2_FORMFILLING", "M3_UPLOAD", "M4_VERIFICATION", "M5_FINALIZE"]
+        assert stages == [
+            "M1_STATEDAUTH",
+            "M2_FORMFILLING",
+            "M3_UPLOAD",
+            "M4_VERIFICATION",
+            "M5_FINALIZE",
+        ]
 
     def test_deployment_all_use_browserlabor(self) -> None:
         """All deployment stages M1-M4 should use BrowserLabor (M5 uses ContentLabor)."""
@@ -64,7 +71,12 @@ class TestDeploymentPipelineStages:
         config = loader.load_pipeline("deployment")
         # M1-M4 use BrowserLabor, M5 uses ContentLabor
         for step in config.steps:
-            if step.stage.startswith("M1") or step.stage.startswith("M2") or step.stage.startswith("M3") or step.stage.startswith("M4"):
+            if (
+                step.stage.startswith("M1")
+                or step.stage.startswith("M2")
+                or step.stage.startswith("M3")
+                or step.stage.startswith("M4")
+            ):
                 assert step.labor == "BrowserLabor", f"Stage {step.stage} should use BrowserLabor"
             elif step.stage == "M5_FINALIZE":
                 assert step.labor == "ContentLabor", f"Stage {step.stage} should use ContentLabor"
@@ -78,6 +90,7 @@ class TestBrowserLaborM1StateAuth:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -87,7 +100,9 @@ class TestBrowserLaborM1StateAuth:
         workspace = Path(temp_dir) / "test_workspace"
         workspace.mkdir(parents=True, exist_ok=True)
 
-        with patch("hermes_os.labor.browser_labor.check_login_state", new_callable=AsyncMock) as mock:
+        with patch(
+            "hermes_os.labor.browser_labor.check_login_state", new_callable=AsyncMock
+        ) as mock:
             mock.return_value = True  # Logged in
 
             result = await labor.execute(
@@ -106,7 +121,9 @@ class TestBrowserLaborM1StateAuth:
         workspace = Path(temp_dir) / "test_workspace"
         workspace.mkdir(parents=True, exist_ok=True)
 
-        with patch("hermes_os.labor.browser_labor.check_login_state", new_callable=AsyncMock) as mock:
+        with patch(
+            "hermes_os.labor.browser_labor.check_login_state", new_callable=AsyncMock
+        ) as mock:
             mock.return_value = False  # Not logged in
 
             result = await labor.execute(
@@ -126,6 +143,7 @@ class TestBrowserLaborM2FormFilling:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -159,6 +177,7 @@ class TestBrowserLaborM3Upload:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -193,6 +212,7 @@ class TestBrowserLaborM4Verification:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -208,7 +228,11 @@ class TestBrowserLaborM4Verification:
             result = await labor.execute(
                 workspace=workspace,
                 task_description="Verify product listed on Amazon",
-                meta={"stage": "M4_VERIFICATION", "platform": "amazon", "expected_text": "Product Name"},
+                meta={
+                    "stage": "M4_VERIFICATION",
+                    "platform": "amazon",
+                    "expected_text": "Product Name",
+                },
             )
 
             assert result is True

@@ -52,9 +52,7 @@ class KnowledgeRouter:
             self._db = None
         self._initialized = False
 
-    async def add_document(
-        self, doc_id: str, team: str, title: str, content: str
-    ) -> None:
+    async def add_document(self, doc_id: str, team: str, title: str, content: str) -> None:
         """Store or replace a document for a team."""
         await self.initialize()
         db = await self._get_db()
@@ -74,9 +72,7 @@ class KnowledgeRouter:
         )
         await db.commit()
 
-    async def search(
-        self, query: str, team: str, limit: int = 5
-    ) -> list[dict]:
+    async def search(self, query: str, team: str, limit: int = 5) -> list[dict]:
         """Return up to `limit` matching documents for a team."""
         await self.initialize()
         db = await self._get_db()

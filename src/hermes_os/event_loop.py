@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +219,7 @@ class HermesOSEventLoop:
         if self._task:
             try:
                 await asyncio.wait_for(self._task, timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             self._task = None
         logger.info("HermesOSEventLoop stopped")
@@ -245,7 +246,7 @@ class HermesOSEventLoop:
                 )
                 # stop_event was set, exit cleanly
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Normal tick timeout
                 pass
 

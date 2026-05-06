@@ -12,18 +12,18 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-
 # ---------------------------------------------------------------------------
 # OutputStyle
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class OutputStyle:
     """User output style preferences."""
 
-    tone: str = "neutral"           # "technical" | "casual" | "concise" | "neutral"
-    language: str = "auto"          # "zh" | "en" | "auto"
-    format: str = "markdown"        # "markdown" | "plain" | "card"
+    tone: str = "neutral"  # "technical" | "casual" | "concise" | "neutral"
+    language: str = "auto"  # "zh" | "en" | "auto"
+    format: str = "markdown"  # "markdown" | "plain" | "card"
     max_length: int = 2000
     include_metadata: bool = False
 
@@ -31,6 +31,7 @@ class OutputStyle:
 # ---------------------------------------------------------------------------
 # OutputAdapter
 # ---------------------------------------------------------------------------
+
 
 class OutputAdapter:
     """Adapts agent output to user-preferred style.
@@ -100,10 +101,10 @@ class OutputAdapter:
         # Find a good break point (end of sentence or clause)
         truncated = text[:max_length]
         # Try to break at sentence boundary
-        sentence_breaks = list(re.finditer(r'[。！？\n]', truncated))
+        sentence_breaks = list(re.finditer(r"[。！？\n]", truncated))
         if sentence_breaks:
             last_break = sentence_breaks[-1]
-            return truncated[:last_break.end()] + "..."
+            return truncated[: last_break.end()] + "..."
         return truncated.rstrip() + "..."
 
     def _make_concise(self, text: str) -> str:
@@ -118,7 +119,7 @@ class OutputAdapter:
             return text
 
         # Split into sentences
-        sentences = re.split(r'[。！？\n]', text)
+        sentences = re.split(r"[。！？\n]", text)
         sentences = [s.strip() for s in sentences if s.strip()]
 
         if len(sentences) <= 2:
@@ -132,8 +133,8 @@ class OutputAdapter:
         # If still too long, take only first sentence + key numbers
         if len(concise) > 300:
             # Extract numbers and key terms
-            numbers = re.findall(r'[\d.]+%?|[\d.]+倍', text)
-            key_terms = re.findall(r'[^，。\n]{2,5}(?:投资|股票|基金|收益|风险|回报)', text)
+            numbers = re.findall(r"[\d.]+%?|[\d.]+倍", text)
+            key_terms = re.findall(r"[^，。\n]{2,5}(?:投资|股票|基金|收益|风险|回报)", text)
             if numbers:
                 concise = sentences[0] + "。"
                 concise += "关键数据：" + "、".join(numbers[:5])
@@ -145,19 +146,19 @@ class OutputAdapter:
     def _strip_markdown(self, text: str) -> str:
         """Strip markdown syntax to produce plain text."""
         # Remove headers
-        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
         # Remove bold/italic
-        text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
-        text = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', text)
+        text = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", text)
+        text = re.sub(r"_{1,3}([^_]+)_{1,3}", r"\1", text)
         # Remove inline code
-        text = re.sub(r'`([^`]+)`', r'\1', text)
+        text = re.sub(r"`([^`]+)`", r"\1", text)
         # Remove code blocks (keep content)
-        text = re.sub(r'```[\w]*\n(.*?)```', r'\1', text, flags=re.DOTALL)
+        text = re.sub(r"```[\w]*\n(.*?)```", r"\1", text, flags=re.DOTALL)
         # Remove links
-        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
         # Remove list markers
-        text = re.sub(r'^[\s]*[-*+]\s+', '', text, flags=re.MULTILINE)
-        text = re.sub(r'^[\s]*\d+\.\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^[\s]*[-*+]\s+", "", text, flags=re.MULTILINE)
+        text = re.sub(r"^[\s]*\d+\.\s+", "", text, flags=re.MULTILINE)
         # Clean up extra whitespace
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()

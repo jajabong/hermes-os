@@ -30,9 +30,11 @@ logger = logging.getLogger("hermes_os.gene_engine")
 # Gene Data Structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class AntibodyGene:
     """An antibody gene — a fix strategy for a known failure pattern."""
+
     pattern: str  # Regex or key pattern that identifies this failure
     fix_strategy: str  # Prompt or approach that fixes this
     failure_count: int = 0  # How many times this pattern was encountered
@@ -71,6 +73,7 @@ class AntibodyGene:
 @dataclass
 class SuccessfulGene:
     """A successful prompt strategy that can be reused."""
+
     prompt_template: str
     context_type: str  # e.g., "code_generation", "research", "review"
     outcome: str  # "success" | "partial" | "failed"
@@ -168,6 +171,7 @@ Task: {{base_prompt}}
 # GeneEngine
 # ---------------------------------------------------------------------------
 
+
 class GeneEngine:
     """
     Evolution engine for Hermes OS — tracks failures, successes, and auto-generates specialized agents.
@@ -238,8 +242,9 @@ class GeneEngine:
             genes[error_pattern] = gene
 
         self._save_antibody_genes(genes)
-        self._logger.info("Recorded antibody gene: pattern=%s failure_count=%d",
-                          error_pattern, gene.failure_count)
+        self._logger.info(
+            "Recorded antibody gene: pattern=%s failure_count=%d", error_pattern, gene.failure_count
+        )
 
         # Check if differentiation is needed
         if gene.failure_count >= self.DIFFERENTIATION_THRESHOLD and gene.fix_strategy:
@@ -255,8 +260,9 @@ class GeneEngine:
             gene.success_count += 1
             gene.last_seen = datetime.now(UTC).isoformat()
             self._save_antibody_genes(genes)
-            self._logger.info("Antibody %s worked! success_count=%d",
-                              error_pattern, gene.success_count)
+            self._logger.info(
+                "Antibody %s worked! success_count=%d", error_pattern, gene.success_count
+            )
 
     def get_antibody(self, error_pattern: str) -> AntibodyGene | None:
         """Get an antibody gene for a pattern if one exists."""
@@ -305,7 +311,9 @@ class GeneEngine:
             gene.last_used = datetime.now(UTC).isoformat()
             # Update success rate
             if outcome == "success":
-                gene.success_rate = (gene.success_rate * (gene.use_count - 1) + 1.0) / gene.use_count
+                gene.success_rate = (
+                    gene.success_rate * (gene.use_count - 1) + 1.0
+                ) / gene.use_count
             elif outcome == "failed":
                 gene.success_rate = gene.success_rate * (gene.use_count - 1) / gene.use_count
         else:
@@ -319,8 +327,9 @@ class GeneEngine:
             pool[key] = gene
 
         self._save_gene_pool(pool)
-        self._logger.info("Recorded gene in pool: context=%s use_count=%d",
-                          context_type, gene.use_count)
+        self._logger.info(
+            "Recorded gene in pool: context=%s use_count=%d", context_type, gene.use_count
+        )
         return gene
 
     def get_best_strategy(self, context_type: str) -> SuccessfulGene | None:
@@ -341,8 +350,9 @@ class GeneEngine:
         Returns True if a specialized agent was created.
         """
         if gene.fix_strategy:
-            self._logger.info("Threshold reached for pattern %s, spawning specialized agent",
-                              error_pattern)
+            self._logger.info(
+                "Threshold reached for pattern %s, spawning specialized agent", error_pattern
+            )
             return self._spawn_specialized_agent(error_pattern, gene)
         return False
 
@@ -356,7 +366,7 @@ class GeneEngine:
             agent_code = self._generate_agent_code(error_pattern, gene, agent_type)
 
             # Write to specialized_agents directory
-            safe_name = re.sub(r'[^a-zA-Z0-9]', '_', error_pattern)[:30]
+            safe_name = re.sub(r"[^a-zA-Z0-9]", "_", error_pattern)[:30]
             agent_path = self._specialized_dir / f"{safe_name}_agent.py"
 
             agent_path.write_text(agent_code, "utf-8")
@@ -364,25 +374,26 @@ class GeneEngine:
 
             return True
         except Exception as e:
-            self._logger.error("Failed to spawn specialized agent for %s: %s",
-                               error_pattern, str(e))
+            self._logger.error(
+                "Failed to spawn specialized agent for %s: %s", error_pattern, str(e)
+            )
             return False
 
     def _infer_agent_type(self, error_pattern: str) -> str:
         """Infer the agent type from the error pattern."""
         pattern_lower = error_pattern.lower()
 
-        if any(k in pattern_lower for k in ['syntax', 'indentation', 'import']):
+        if any(k in pattern_lower for k in ["syntax", "indentation", "import"]):
             return "CodeFix"
-        elif any(k in pattern_lower for k in ['test', 'assert', 'pytest']):
+        elif any(k in pattern_lower for k in ["test", "assert", "pytest"]):
             return "TestFix"
-        elif any(k in pattern_lower for k in ['format', 'lint', 'style']):
+        elif any(k in pattern_lower for k in ["format", "lint", "style"]):
             return "FormatFix"
-        elif any(k in pattern_lower for k in ['api', 'http', 'request']):
+        elif any(k in pattern_lower for k in ["api", "http", "request"]):
             return "API"
-        elif any(k in pattern_lower for k in ['db', 'sql', 'query']):
+        elif any(k in pattern_lower for k in ["db", "sql", "query"]):
             return "Database"
-        elif any(k in pattern_lower for k in ['security', 'injection', 'xss']):
+        elif any(k in pattern_lower for k in ["security", "injection", "xss"]):
             return "Security"
         else:
             return "General"
@@ -394,7 +405,7 @@ class GeneEngine:
         template = SPECIALIZED_AGENT_TEMPLATE.format(
             agent_type=agent_type,
             failure_pattern=error_pattern.replace('"', '\\"'),
-            fix_strategy=gene.fix_strategy.replace('"', '\\"').replace('\n', '\n        '),
+            fix_strategy=gene.fix_strategy.replace('"', '\\"').replace("\n", "\n        "),
             created_at=datetime.now(UTC).isoformat(),
             indicators_list=str(indicators),
         )
@@ -410,11 +421,13 @@ class GeneEngine:
         """List all available specialized agents."""
         agents = []
         for path in self._specialized_dir.glob("*_agent.py"):
-            agents.append({
-                "name": path.stem,
-                "path": str(path),
-                "size": path.stat().st_size,
-            })
+            agents.append(
+                {
+                    "name": path.stem,
+                    "path": str(path),
+                    "size": path.stat().st_size,
+                }
+            )
         return agents
 
     # -------------------------------------------------------------------------
@@ -428,6 +441,7 @@ class GeneEngine:
         """
         genes = self._load_antibody_genes()
         from datetime import timedelta
+
         cutoff_date = datetime.now(UTC) - timedelta(days=days_threshold)
 
         to_remove = []

@@ -21,9 +21,7 @@ class KnowledgeCLI:
     async def close(self) -> None:
         await self._router.close()
 
-    async def add(
-        self, doc_id: str, team: str, title: str, content: str
-    ) -> dict:
+    async def add(self, doc_id: str, team: str, title: str, content: str) -> dict:
         """Store or replace a document. Returns the stored document dict."""
         await self._router.add_document(doc_id=doc_id, team=team, title=title, content=content)
         return {"doc_id": doc_id, "team": team, "title": title, "content": content}
@@ -40,9 +38,7 @@ class KnowledgeCLI:
         """Return all documents for a team."""
         return await self._router.list_documents(team=team)
 
-    async def search(
-        self, query: str, team: str, limit: int = 5
-    ) -> list[dict]:
+    async def search(self, query: str, team: str, limit: int = 5) -> list[dict]:
         """Full-text search across a team's documents."""
         return await self._router.search(query=query, team=team, limit=limit)
 

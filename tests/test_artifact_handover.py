@@ -7,25 +7,22 @@ Each artifact can carry a `parent_artifact_id` so downstream pipelines
 know what upstream artifact to consume.
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from hermes_os.artifact_manager import (
     ArtifactManager,
-    ArtifactWorkspace,
-    ArtifactStage,
-    ArtifactStatus,
-    ArtifactMeta,
 )
 from hermes_os.pipeline_engine import PipelineEngine, PipelineStage
-from typing import TYPE_CHECKING, Any
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def temp_base() -> Path:
@@ -42,6 +39,7 @@ def am(temp_base: Path) -> ArtifactManager:
 # ---------------------------------------------------------------------------
 # parent_artifact_id in ArtifactMeta
 # ---------------------------------------------------------------------------
+
 
 class TestParentArtifactId:
     """parent_artifact_id enables artifact lineage tracking."""
@@ -73,6 +71,7 @@ class TestParentArtifactId:
         await am.set_parent_artifact_id("p1-input", "p3-artifact-xyz")
         meta_path = ws.root_path / "meta.json"
         import json
+
         data = json.loads(meta_path.read_text("utf-8"))
         assert data["parent_artifact_id"] == "p3-artifact-xyz"
 
@@ -80,6 +79,7 @@ class TestParentArtifactId:
 # ---------------------------------------------------------------------------
 # Artifact Linking — dependency tree
 # ---------------------------------------------------------------------------
+
 
 class TestArtifactLinking:
     """Artifact linking builds a dependency tree across pipeline stages."""
@@ -173,6 +173,7 @@ class TestArtifactLinking:
 # Pipeline Orchestrator — project.yaml driven chaining
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineOrchestrator:
     """Project orchestrator chains multiple pipelines via project.yaml."""
 
@@ -213,7 +214,9 @@ steps:
 
     def test_load_project_yaml(self, sample_project_yaml: Path) -> None:
         """ProjectOrchestrator loads project.yaml and parses steps."""
-        from hermes_os.pipeline_orchestrator import ProjectOrchestrator, ProjectDefinition, ProjectStep
+        from hermes_os.pipeline_orchestrator import (
+            ProjectDefinition,
+        )
 
         proj = ProjectDefinition.from_yaml(sample_project_yaml)
         assert proj.name == "my-book-project"
@@ -306,6 +309,7 @@ steps:
 # P3→P1→P4 End-to-End Chain Tests
 # ---------------------------------------------------------------------------
 
+
 class TestP3P1P4Chain:
     """End-to-end integration tests for P3→P1→P4 pipeline chaining.
 
@@ -355,8 +359,7 @@ steps:
         (p3_root / "src").mkdir(parents=True, exist_ok=True)
         research_md = p3_root / "src" / "research.md"
         research_md.write_text(
-            "# AI时代的组织变革研究报告\n\n"
-            "本文探讨AI如何重塑组织结构和管理实践。\n",
+            "# AI时代的组织变革研究报告\n\n本文探讨AI如何重塑组织结构和管理实践。\n",
             "utf-8",
         )
         return research_md
@@ -370,9 +373,10 @@ steps:
     ) -> None:
         """P3→P1→P4 chain executes all 3 pipelines with success."""
         from unittest.mock import AsyncMock, MagicMock, patch
-        from hermes_os.pipeline_engine import PipelineEngine, PipelineStage
-        from hermes_os.pipeline_orchestrator import ProjectOrchestrator
+
         from hermes_os.artifact_manager import ArtifactManager
+        from hermes_os.pipeline_engine import PipelineEngine
+        from hermes_os.pipeline_orchestrator import ProjectOrchestrator
 
         am = ArtifactManager(base_dir=temp_chain_dir / "artifacts")
         engine = PipelineEngine(artifact_base=temp_chain_dir / "artifacts")
@@ -397,9 +401,7 @@ steps:
         mock_subprocess_result.stdout = ""
         mock_subprocess_result.stderr = ""
 
-        with patch(
-            "hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock
-        ) as mock_invoke:
+        with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = mock_invoke_result
 
             with patch("subprocess.run", new_callable=MagicMock) as mock_run:
@@ -428,9 +430,10 @@ steps:
     ) -> None:
         """After P3→P1→P4 chain, publish-amazon lineage includes both ancestors."""
         from unittest.mock import AsyncMock, MagicMock, patch
+
+        from hermes_os.artifact_manager import ArtifactManager
         from hermes_os.pipeline_engine import PipelineEngine
         from hermes_os.pipeline_orchestrator import ProjectOrchestrator
-        from hermes_os.artifact_manager import ArtifactManager
 
         am = ArtifactManager(base_dir=temp_chain_dir / "artifacts")
         engine = PipelineEngine(artifact_base=temp_chain_dir / "artifacts")
@@ -443,9 +446,7 @@ steps:
         mock_subprocess_result.stdout = ""
         mock_subprocess_result.stderr = ""
 
-        with patch(
-            "hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock
-        ) as mock_invoke:
+        with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = mock_invoke_result
             with patch("subprocess.run", new_callable=MagicMock) as mock_run:
                 mock_run.return_value = mock_subprocess_result
@@ -468,9 +469,10 @@ steps:
     ) -> None:
         """parent_artifact_id is set in context when child pipeline runs."""
         from unittest.mock import AsyncMock, MagicMock, patch
+
+        from hermes_os.artifact_manager import ArtifactManager
         from hermes_os.pipeline_engine import PipelineEngine
         from hermes_os.pipeline_orchestrator import ProjectOrchestrator
-        from hermes_os.artifact_manager import ArtifactManager
 
         am = ArtifactManager(base_dir=temp_chain_dir / "artifacts")
         engine = PipelineEngine(artifact_base=temp_chain_dir / "artifacts")
@@ -491,9 +493,7 @@ steps:
             captured_contexts[task_id] = dict(context)
             return await original_execute(task_id, definition, context)
 
-        with patch(
-            "hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock
-        ) as mock_invoke:
+        with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = mock_invoke_result
             with patch("subprocess.run", new_callable=MagicMock) as mock_run:
                 mock_run.return_value = mock_subprocess_result
@@ -511,6 +511,7 @@ steps:
 # ---------------------------------------------------------------------------
 # Pipeline Hooks (P5 Governance)
 # ---------------------------------------------------------------------------
+
 
 class TestPipelineHooks:
     """Pipeline hooks enable P5 Governance as built-in middleware."""
@@ -538,7 +539,6 @@ class TestPipelineHooks:
 
         engine.register_hook("pre_execute", my_pre_hook)
 
-        from hermes_os.pipeline_engine import PipelineStage
         ws = await engine.create_pipeline_workspace("hook-test-001", "test-pipeline")
 
         stage = PipelineStage(
@@ -562,7 +562,6 @@ class TestPipelineHooks:
 
         engine.register_hook("post_execute", my_post_hook)
 
-        from hermes_os.pipeline_engine import PipelineStage
         ws = await engine.create_pipeline_workspace("hook-test-002", "test-pipeline")
 
         stage = PipelineStage(
@@ -586,7 +585,6 @@ class TestPipelineHooks:
 
         engine.register_hook("post_execute", result_hook)
 
-        from hermes_os.pipeline_engine import PipelineStage
         ws = await engine.create_pipeline_workspace("hook-test-003", "test-pipeline")
 
         stage = PipelineStage(
@@ -614,7 +612,6 @@ class TestPipelineHooks:
         engine.register_hook("pre_execute", pre_hook1)
         engine.register_hook("pre_execute", pre_hook2)
 
-        from hermes_os.pipeline_engine import PipelineStage
         ws = await engine.create_pipeline_workspace("hook-test-004", "test-pipeline")
 
         stage = PipelineStage(

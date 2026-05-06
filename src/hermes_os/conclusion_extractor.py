@@ -18,6 +18,7 @@ from typing import Any
 
 class ConclusionLevel(Enum):
     """任务状态级别，对应不同图标和颜色。"""
+
     SUCCESS = "success"
     FAILURE = "failure"
     WARNING = "warning"
@@ -60,6 +61,7 @@ class ConclusionCard:
         task_id: 任务ID
         goal_context: 可选的目标语境（如 "完成供应商对比 (Phase 2/5)"）
     """
+
     level: ConclusionLevel
     conclusion: str
     evidence: list[str] = field(default_factory=list)
@@ -81,7 +83,9 @@ class ConclusionCard:
             for e in self.evidence[:5]:
                 parts.append(f"- {e}")
 
-        parts.append(f"\n<details>\n<summary>📋 详情（点击展开）</summary>\n\n```\n{self.details}\n```\n</details>")
+        parts.append(
+            f"\n<details>\n<summary>📋 详情（点击展开）</summary>\n\n```\n{self.details}\n```\n</details>"
+        )
 
         return "\n".join(parts)
 
@@ -95,34 +99,42 @@ class ConclusionCard:
         if self.goal_context:
             conclusion_text += f"\n🎯 {self.goal_context}"
 
-        elements.append({
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": conclusion_text,
-            },
-        })
+        elements.append(
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": conclusion_text,
+                },
+            }
+        )
 
         # Evidence section
         if self.evidence:
             evidence_text = "**证据:**\n" + "\n".join(f"- {e}" for e in self.evidence[:5])
-            elements.append({
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": evidence_text,
-                },
-            })
+            elements.append(
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": evidence_text,
+                    },
+                }
+            )
 
         # Collapsible details (using note tag)
         if self.details:
-            elements.append({
-                "tag": "note",
-                "elements": [{
-                    "tag": "lark_md",
-                    "content": f"**详情:**\n```\n{self.details[:1500]}\n```",
-                }],
-            })
+            elements.append(
+                {
+                    "tag": "note",
+                    "elements": [
+                        {
+                            "tag": "lark_md",
+                            "content": f"**详情:**\n```\n{self.details[:1500]}\n```",
+                        }
+                    ],
+                }
+            )
 
         return elements
 
@@ -253,9 +265,7 @@ class ConclusionExtractor:
 
         return ConclusionLevel.SUCCESS
 
-    def _extract_conclusion(
-        self, output: str, level: ConclusionLevel, task_title: str
-    ) -> str:
+    def _extract_conclusion(self, output: str, level: ConclusionLevel, task_title: str) -> str:
         """萃取一句话结论。"""
         if level == ConclusionLevel.FAILURE:
             # Try to extract error type
@@ -292,7 +302,9 @@ class ConclusionExtractor:
         for pattern in self._TIME_PATTERNS:
             match = re.search(pattern, output, re.IGNORECASE)
             if match:
-                evidence.append(f"耗时: {match.group(1)}{match.group(2) if len(match.groups()) > 1 else 's'}")
+                evidence.append(
+                    f"耗时: {match.group(1)}{match.group(2) if len(match.groups()) > 1 else 's'}"
+                )
                 break
 
         # Extract counts (passed/failed)
@@ -305,13 +317,17 @@ class ConclusionExtractor:
             evidence.append(f"失败: {failed_match.group(1)}")
 
         # Extract success rate
-        rate_match = re.search(r"(?:rate|成功率|准确率)[:\s]*(\d+(?:\.\d+)?%?)", output, re.IGNORECASE)
+        rate_match = re.search(
+            r"(?:rate|成功率|准确率)[:\s]*(\d+(?:\.\d+)?%?)", output, re.IGNORECASE
+        )
         if rate_match:
             evidence.append(f"成功率: {rate_match.group(1)}")
 
         # Extract deployed info
         if "deploy" in output.lower():
-            deploy_match = re.search(r"deploy(?:ed|ing)?\s+(?:to\s+)?(.+?)(?:\n|$)", output, re.IGNORECASE)
+            deploy_match = re.search(
+                r"deploy(?:ed|ing)?\s+(?:to\s+)?(.+?)(?:\n|$)", output, re.IGNORECASE
+            )
             if deploy_match:
                 evidence.append(f"部署目标: {deploy_match.group(1).strip()[:30]}")
 

@@ -8,25 +8,32 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Type, Dict, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class LaborResult:
     """Standard result for all Labor Units."""
+
     success: bool
     token_usage: int = 0
     api_cost_usd: float = 0.0
     error: str | None = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
 
 @runtime_checkable
 class LaborInterface(Protocol):
     """The standard contract for all Labor Units."""
-    async def execute(self, workspace: Any, task_description: str, meta: Dict[str, Any]) -> LaborResult:
+
+    async def execute(
+        self, workspace: Any, task_description: str, meta: dict[str, Any]
+    ) -> LaborResult:
         """Execute the labor task within a workspace."""
         ...
+
 
 class LaborRegistry:
     """
@@ -35,9 +42,9 @@ class LaborRegistry:
     """
 
     def __init__(self) -> None:
-        self._registry: Dict[str, Type[LaborInterface]] = {}
+        self._registry: dict[str, type[LaborInterface]] = {}
 
-    def register(self, name: str, labor_class: Type[LaborInterface]) -> None:
+    def register(self, name: str, labor_class: type[LaborInterface]) -> None:
         """Register a labor class with a unique name."""
         self._registry[name] = labor_class
         logger.debug("Registered labor: %s", name)
@@ -53,7 +60,7 @@ class LaborRegistry:
 
         # Instantiate with provided dependencies
         try:
-            return labor_class(**kwargs) # type: ignore
+            return labor_class(**kwargs)  # type: ignore
         except TypeError as e:
             logger.error("Failed to instantiate labor %s: %s", name, e)
             raise
@@ -78,28 +85,32 @@ class LaborRegistry:
         """Alias for list_labors() for backward compatibility."""
         return self.list_labors()
 
+
 _global_registry = LaborRegistry()
+
 
 def get_labor_registry() -> LaborRegistry:
     """Get the global singleton registry."""
     return _global_registry
 
+
 # ---------------------------------------------------------------------------
 # Auto-registration helper
 # ---------------------------------------------------------------------------
 
+
 def initialize_default_labors() -> None:
     """Bootstrap the registry with built-in labors."""
-    from hermes_os.labor.content_labor import ContentLabor
-    from hermes_os.labor.code_labor import CodeLabor
-    from hermes_os.labor.github_labor import GitHubLabor
-    from hermes_os.labor.checker_labor import CheckerLabor
-    from hermes_os.labor.data_labor import DataLabor
     from hermes_os.labor.browser_labor import BrowserLabor
-    from hermes_os.labor.research_labor import ResearchLabor
-    from hermes_os.labor.format_labor import FormatLabor
+    from hermes_os.labor.checker_labor import CheckerLabor
+    from hermes_os.labor.code_labor import CodeLabor
+    from hermes_os.labor.content_labor import ContentLabor
+    from hermes_os.labor.data_labor import DataLabor
     from hermes_os.labor.feishu_labor import FeishuLabor
+    from hermes_os.labor.format_labor import FormatLabor
+    from hermes_os.labor.github_labor import GitHubLabor
     from hermes_os.labor.governance_labor import GovernanceLabor
+    from hermes_os.labor.research_labor import ResearchLabor
 
     registry = get_labor_registry()
     registry.register("ContentLabor", ContentLabor)

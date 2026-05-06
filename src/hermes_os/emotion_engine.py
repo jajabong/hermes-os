@@ -3,23 +3,48 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from hermes_os.emotion_types import EmotionState, ToneConfig
 
-
 _EMOTION_KEYWORDS = {
     EmotionState.POSITIVE: [
-        r"太棒了", r"谢谢", r"厉害", r"完美", r"棒",
-        r"👍", r"✨", r"🎉", r"感谢", r"太好了", r"赞", r"非常好",
+        r"太棒了",
+        r"谢谢",
+        r"厉害",
+        r"完美",
+        r"棒",
+        r"👍",
+        r"✨",
+        r"🎉",
+        r"感谢",
+        r"太好了",
+        r"赞",
+        r"非常好",
     ],
     EmotionState.STRESSED: [
-        r"太忙", r"来不及", r"没时间", r"急死了", r"忙", r"赶",
-        r"压力", r"焦虑", r"紧张", r"崩溃", r"头疼",
+        r"太忙",
+        r"来不及",
+        r"没时间",
+        r"急死了",
+        r"忙",
+        r"赶",
+        r"压力",
+        r"焦虑",
+        r"紧张",
+        r"崩溃",
+        r"头疼",
     ],
     EmotionState.FRUSTRATED: [
-        r"烦死了", r"太难了", r"失败", r"不行", r"搞不定",
-        r"没救了", r"绝望", r"受够了", r"郁闷", r"糟糕",
+        r"烦死了",
+        r"太难了",
+        r"失败",
+        r"不行",
+        r"搞不定",
+        r"没救了",
+        r"绝望",
+        r"受够了",
+        r"郁闷",
+        r"糟糕",
     ],
 }
 
@@ -58,7 +83,9 @@ class EmotionEngine:
 
         # Per-user recent signals boost
         recent = self._recent_signals.get(user_id, [])
-        recent_stress = sum(1 for s, _ in recent if self._matches_any(s, _EMOTION_KEYWORDS[EmotionState.STRESSED]))
+        recent_stress = sum(
+            1 for s, _ in recent if self._matches_any(s, _EMOTION_KEYWORDS[EmotionState.STRESSED])
+        )
         if recent_stress >= _STRESS_BOOST_THRESHOLD:
             return EmotionState.STRESSED
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict
 
 import aiosqlite
 
@@ -43,6 +42,7 @@ class ShardManager:
         Python's built-in hash() is randomized per-process for security.
         """
         import zlib
+
         return zlib.crc32(user_id.encode("utf-8")) % self.num_shards
 
     def db_path_for(self, user_id: str) -> Path:
@@ -123,9 +123,9 @@ class ShardedStorage:
 
     def __init__(self, shard_manager: ShardManager | None = None) -> None:
         self.shard_manager = shard_manager or ShardManager()
-        self._connections: Dict[str, aiosqlite.Connection] = {}
+        self._connections: dict[str, aiosqlite.Connection] = {}
         # task_id → db_name (e.g. "alice") for O(1) shard lookup
-        self._task_shard_cache: Dict[str, str] = {}
+        self._task_shard_cache: dict[str, str] = {}
         # LRU access order for connection cache eviction
         self._access_order: list[str] = []
         # Maximum connections to keep in cache
@@ -171,7 +171,6 @@ class ShardedStorage:
 
     async def _lazy_initialize(self, db: aiosqlite.Connection, user_id: str) -> None:
         """Create shard-local tables. Idempotent — safe to call multiple times."""
-        from datetime import UTC, datetime
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS user_shard_index (
@@ -246,7 +245,7 @@ class ShardedStorage:
     # Task storage (delegates to correct shard per user_id)
     # -------------------------------------------------------------------------
 
-    async def create_task(self, task: "Task") -> None:
+    async def create_task(self, task: Task) -> None:
         """Create a task in the user's shard DB.
 
         Args:
@@ -287,10 +286,10 @@ class ShardedStorage:
             await conn.rollback()
             raise
 
-    def _task_from_row(self, row: dict) -> "Task":
+    def _task_from_row(self, row: dict) -> Task:
         """Reconstruct Task from a shard DB row dict."""
         from ast import literal_eval
-        from datetime import datetime, UTC
+        from datetime import UTC, datetime
 
         from hermes_os.task_scheduler import Task, TaskPriority, TaskStatus
 
@@ -319,8 +318,12 @@ class ShardedStorage:
             user_id=row["user_id"],
             title=row["title"],
             description=row.get("description", ""),
-            status=TaskStatus(status_str) if status_str in [s.value for s in TaskStatus] else TaskStatus.PENDING,
-            priority=TaskPriority(priority_str) if priority_str in [p.value for p in TaskPriority] else TaskPriority.NORMAL,
+            status=TaskStatus(status_str)
+            if status_str in [s.value for s in TaskStatus]
+            else TaskStatus.PENDING,
+            priority=TaskPriority(priority_str)
+            if priority_str in [p.value for p in TaskPriority]
+            else TaskPriority.NORMAL,
             depends_on=depends_on,
             result=row.get("result") or None,
             error=row.get("error") or None,
@@ -332,15 +335,13 @@ class ShardedStorage:
             metadata=metadata,
         )
 
-    async def get_task(self, task_id: str) -> "Task | None":
+    async def get_task(self, task_id: str) -> Task | None:
         """Find a task by task_id. Uses cache for O(1) lookup after first access."""
         # Fast path: cache hit
         cached_db_name = self._task_shard_cache.get(task_id)
         if cached_db_name:
             conn = await self._get_db_for(cached_db_name)
-            async with conn.execute(
-                "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
-            ) as cur:
+            async with conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)) as cur:
                 row = await cur.fetchone()
                 if row:
                     return self._task_from_row(dict(row))
@@ -350,7 +351,7 @@ class ShardedStorage:
         # Slow path: scan all shards, populate cache on hit
         return await self._scan_all_shards_for_task(task_id)
 
-    async def _scan_all_shards_for_task(self, task_id: str) -> "Task | None":
+    async def _scan_all_shards_for_task(self, task_id: str) -> Task | None:
         """Scan all shard DBs to find a task. Used on cache miss."""
         if not self.shard_manager.BASE_PATH.exists():
             return None
@@ -365,9 +366,7 @@ class ShardedStorage:
                 if db_file.suffix != ".db":
                     continue
                 conn = await self._get_db_for(db_file.stem)
-                async with conn.execute(
-                    "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
-                ) as cur:
+                async with conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)) as cur:
                     row = await cur.fetchone()
                     if row:
                         # Populate cache for future lookups
@@ -380,7 +379,7 @@ class ShardedStorage:
         user_id: str,
         status: str | None = None,
         limit: int = 50,
-    ) -> list["Task"]:
+    ) -> list[Task]:
         """Get tasks for a specific user from their shard DB."""
         conn = await self._get_db_for(user_id)
         if status:
@@ -393,9 +392,9 @@ class ShardedStorage:
             rows = await cur.fetchall()
         return [self._task_from_row(dict(row)) for row in rows]
 
-    async def get_all_tasks(self) -> list["Task"]:
+    async def get_all_tasks(self) -> list[Task]:
         """Get ALL tasks across all shard DBs."""
-        all_tasks: list["Task"] = []
+        all_tasks: list[Task] = []
         if not self.shard_manager.BASE_PATH.exists():
             return all_tasks
         for shard_dir in self.shard_manager.BASE_PATH.iterdir():
@@ -536,17 +535,15 @@ class ShardedStorage:
                 if db_file.suffix != ".db":
                     continue
                 conn = await self._get_db_for(db_file.stem)
-                cursor = await conn.execute(
-                    "DELETE FROM tasks WHERE task_id = ?", (task_id,)
-                )
+                cursor = await conn.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
                 await conn.commit()
                 if cursor.rowcount > 0:
                     return True
         return False
 
-    async def get_runnable_tasks(self) -> list["Task"]:
+    async def get_runnable_tasks(self) -> list[Task]:
         """Get all PENDING tasks whose dependencies are satisfied."""
-        all_pending: list["Task"] = []
+        all_pending: list[Task] = []
         if not self.shard_manager.BASE_PATH.exists():
             return all_pending
         for shard_dir in self.shard_manager.BASE_PATH.iterdir():
@@ -568,7 +565,7 @@ class ShardedStorage:
                     all_pending.append(self._task_from_row(dict(row)))
 
         # Filter by dependency satisfaction
-        runnable: list["Task"] = []
+        runnable: list[Task] = []
         for task in all_pending:
             if not task.depends_on:
                 runnable.append(task)

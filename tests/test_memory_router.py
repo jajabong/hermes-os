@@ -29,6 +29,7 @@ def _reset_mock() -> None:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def alice() -> User:
     return User(
@@ -68,6 +69,7 @@ def router() -> MemoryRouter:
 # Init tests (no router fixture needed — these test __init__ in isolation)
 # ---------------------------------------------------------------------------
 
+
 class TestMemoryRouterInit:
     """Tests for MemoryRouter initialization."""
 
@@ -95,6 +97,7 @@ class TestMemoryRouterInit:
 # Store tests
 # ---------------------------------------------------------------------------
 
+
 class TestMemoryRouterStore:
     """Tests for MemoryRouter.store()."""
 
@@ -105,9 +108,7 @@ class TestMemoryRouterStore:
         assert _shared_mock_client.add.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_store_passes_user_id(
-        self, router: MemoryRouter, alice: User
-    ) -> None:
+    async def test_store_passes_user_id(self, router: MemoryRouter, alice: User) -> None:
         """store() passes the correct user_id to mem0.add()."""
         await router.store(alice, "I like Python", {"source": "chat"})
 
@@ -131,9 +132,7 @@ class TestMemoryRouterStore:
         )
 
     @pytest.mark.asyncio
-    async def test_store_multiple_calls_accumulate(
-        self, router: MemoryRouter, alice: User
-    ) -> None:
+    async def test_store_multiple_calls_accumulate(self, router: MemoryRouter, alice: User) -> None:
         """Multiple store() calls each trigger a separate add()."""
         await router.store(alice, "Memory 1")
         await router.store(alice, "Memory 2")
@@ -143,6 +142,7 @@ class TestMemoryRouterStore:
 # ---------------------------------------------------------------------------
 # Search tests
 # ---------------------------------------------------------------------------
+
 
 class TestMemoryRouterSearch:
     """Tests for MemoryRouter.search()."""
@@ -183,9 +183,7 @@ class TestMemoryRouterSearch:
         assert call_args.kwargs["limit"] == 5
 
     @pytest.mark.asyncio
-    async def test_search_handles_empty_results(
-        self, router: MemoryRouter, alice: User
-    ) -> None:
+    async def test_search_handles_empty_results(self, router: MemoryRouter, alice: User) -> None:
         """search() returns empty list when no results found."""
         _shared_mock_client.search = AsyncMock(return_value={"results": []})
         results = await router.search(alice, "nothing found")
@@ -196,13 +194,12 @@ class TestMemoryRouterSearch:
 # get_all tests
 # ---------------------------------------------------------------------------
 
+
 class TestMemoryRouterGetAll:
     """Tests for MemoryRouter.get_all()."""
 
     @pytest.mark.asyncio
-    async def test_get_all_returns_all_memories(
-        self, router: MemoryRouter, alice: User
-    ) -> None:
+    async def test_get_all_returns_all_memories(self, router: MemoryRouter, alice: User) -> None:
         """get_all() returns all memories for a user."""
         _shared_mock_client.get_all = AsyncMock(
             return_value={
@@ -238,13 +235,12 @@ class TestMemoryRouterGetAll:
 # Cross-user isolation
 # ---------------------------------------------------------------------------
 
+
 class TestMemoryRouterCrossUser:
     """Verify memory isolation between users."""
 
     @pytest.mark.asyncio
-    async def test_concurrent_users_have_separate_namespaces(
-        self, alice: User, bob: User
-    ) -> None:
+    async def test_concurrent_users_have_separate_namespaces(self, alice: User, bob: User) -> None:
         """Two users' store() calls route to their own namespaces via user_id."""
         client = MagicMock()
         client.add = AsyncMock()

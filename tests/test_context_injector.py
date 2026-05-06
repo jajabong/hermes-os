@@ -1,6 +1,5 @@
 """Tests for ContextInjector."""
 
-
 from hermes_os.context_injector import ContextInjector
 from hermes_os.models import User
 
@@ -56,12 +55,7 @@ class TestContextInjector:
         result = self.injector.inject(self.alice, "Hi")
 
         expected = (
-            "<current_user>\n"
-            "id: alice123\n"
-            "name: Alice\n"
-            "role: user\n"
-            "team: alpha\n"
-            "</current_user>"
+            "<current_user>\nid: alice123\nname: Alice\nrole: user\nteam: alpha\n</current_user>"
         )
         assert expected in result
 

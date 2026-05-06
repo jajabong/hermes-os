@@ -1,11 +1,10 @@
 """Tests for ConversationStateManager — event-driven user conversation state."""
 
 import pytest
-import asyncio
 
 from hermes_os.conversation_state import (
-    ConversationStateManager,
     ConversationState,
+    ConversationStateManager,
     UserConversationState,
 )
 from hermes_os.storage import Storage
@@ -101,6 +100,7 @@ class TestUserConversationState:
     def test_to_dict(self) -> None:
         """to_dict() returns serializable dict."""
         from datetime import UTC, datetime
+
         state = UserConversationState(
             user_id="alice",
             state=ConversationState.AWAITING_CONFIRMATION,

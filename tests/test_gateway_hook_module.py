@@ -8,10 +8,12 @@ from hermes_os.gateway_hook_router import HermesOSRouter
 
 @pytest.fixture
 async def hook() -> HermesOSHook:
-    h = HermesOSHook(config=HookConfig(
-        db_path=":memory:",
-        knowledge_db_path=":memory:",
-    ))
+    h = HermesOSHook(
+        config=HookConfig(
+            db_path=":memory:",
+            knowledge_db_path=":memory:",
+        )
+    )
     await h._get_router()
     await h._get_cli()
     yield h
@@ -78,6 +80,7 @@ class TestHandle:
     @pytest.mark.asyncio
     async def test_handle_fires_on_agent_start(self, hook: HermesOSHook) -> None:
         """handle() enriches the message for agent:start events."""
+
         class FakeEvent:
             text = "Hello Hermes"
 
@@ -97,6 +100,7 @@ class TestHandle:
     @pytest.mark.asyncio
     async def test_handle_ignores_non_agent_start(self, hook: HermesOSHook) -> None:
         """handle() is a no-op for events other than agent:start."""
+
         class FakeEvent:
             text = "unchanged"
 
@@ -118,23 +122,29 @@ class TestHandle:
     @pytest.mark.asyncio
     async def test_handle_noop_when_text_empty(self, hook: HermesOSHook) -> None:
         """handle() is a no-op when event.text is empty."""
+
         class FakeEvent:
             text = ""
 
-        await hook.handle("agent:start", {
-            "platform": "telegram",
-            "user_id": "x",
-            "event": FakeEvent(),
-        })  # no raise
+        await hook.handle(
+            "agent:start",
+            {
+                "platform": "telegram",
+                "user_id": "x",
+                "event": FakeEvent(),
+            },
+        )  # no raise
 
     @pytest.mark.asyncio
     async def test_close_releases_resources(self) -> None:
         """close() releases router and cli resources without raising."""
-        hook = HermesOSHook(config=HookConfig(
-            db_path=":memory:",
-            knowledge_db_path=":memory:",
-            enable_event_loop=False,  # Disable background loops for unit test
-        ))
+        hook = HermesOSHook(
+            config=HookConfig(
+                db_path=":memory:",
+                knowledge_db_path=":memory:",
+                enable_event_loop=False,  # Disable background loops for unit test
+            )
+        )
         await hook._get_router()
         await hook._get_cli()
         await hook.close()  # must not raise
@@ -153,12 +163,15 @@ class TestHermesOSRouter:
         await router.initialize()
         try:
             from hermes_os.router import GatewayEvent
-            req = await router.route(GatewayEvent(
-                platform="telegram",
-                platform_user_id="user_1",
-                message="Hello",
-                user_name="TestUser",
-            ))
+
+            req = await router.route(
+                GatewayEvent(
+                    platform="telegram",
+                    platform_user_id="user_1",
+                    message="Hello",
+                    user_name="TestUser",
+                )
+            )
             assert "<current_user>" in req.enriched_message
         finally:
             await router.close()

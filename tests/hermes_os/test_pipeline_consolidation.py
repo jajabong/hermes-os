@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Tests: v1 vs v2 differences
 # ---------------------------------------------------------------------------
+
 
 def test_both_have_pipeline_stage_dataclass() -> None:
     """Both engines define PipelineStage but with different fields."""
@@ -37,6 +37,7 @@ def test_both_have_stage_status_enum() -> None:
 # ---------------------------------------------------------------------------
 # Tests: v2 BatchArtifactMeta lives in pipeline_engine_v2
 # ---------------------------------------------------------------------------
+
 
 def test_batch_artifact_meta_serialization() -> None:
     """BatchArtifactMeta.to_json() → from_json() should be lossless."""
@@ -86,6 +87,7 @@ def test_batch_artifact_meta_roi_calculation() -> None:
 # Tests: v2 PipelineConfig (different from v1 PipelineDefinition)
 # ---------------------------------------------------------------------------
 
+
 def test_pipeline_config_from_yaml() -> None:
     """PipelineConfig.from_yaml should parse v2 pipeline YAML (string)."""
     from hermes_os.pipeline_engine_v2 import PipelineConfig
@@ -113,6 +115,7 @@ steps:
 # ---------------------------------------------------------------------------
 # Tests: v1 PipelineDefinition from_yaml
 # ---------------------------------------------------------------------------
+
 
 def test_pipeline_definition_from_yaml(tmp_path: Path) -> None:
     """PipelineDefinition.from_yaml should load v1 pipeline YAML (file path)."""
@@ -148,6 +151,7 @@ stages:
 # ---------------------------------------------------------------------------
 # Tests: v1 PipelineWorkspace
 # ---------------------------------------------------------------------------
+
 
 def test_pipeline_workspace_paths() -> None:
     """PipelineWorkspace should expose src_path, render_path, delivery_path."""
@@ -189,9 +193,11 @@ def test_pipeline_workspace_serialization() -> None:
 # Tests: v2 verification functions
 # ---------------------------------------------------------------------------
 
+
 def test_verify_outline_completeness_passes() -> None:
     """verify_outline_completeness should pass a well-structured outline."""
     import asyncio
+
     from hermes_os.pipeline_engine_v2 import verify_outline_completeness
 
     outline = """# 主标题
@@ -210,6 +216,7 @@ def test_verify_outline_completeness_passes() -> None:
 def test_verify_outline_completeness_fails_on_hollow() -> None:
     """verify_outline_completeness should fail on hollow outline."""
     import asyncio
+
     from hermes_os.pipeline_engine_v2 import verify_outline_completeness
 
     outline = """# 主标题
@@ -223,6 +230,7 @@ def test_verify_outline_completeness_fails_on_hollow() -> None:
 def test_verify_audit_score_threshold() -> None:
     """verify_audit_score should enforce 0.8 threshold."""
     import asyncio
+
     from hermes_os.pipeline_engine_v2 import verify_audit_score
 
     result = asyncio.run(verify_audit_score(0.85))
@@ -235,6 +243,7 @@ def test_verify_audit_score_threshold() -> None:
 # ---------------------------------------------------------------------------
 # Tests: Integration — v1 PipelineEngine.execute_stage with mock labor
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_execute_stage_runs_labor_and_updates_workspace(tmp_path: Path) -> None:
@@ -260,6 +269,7 @@ async def test_execute_stage_runs_labor_and_updates_workspace(tmp_path: Path) ->
 
     # Register mock labor
     from hermes_os.pipeline_engine import LaborResult
+
     engine._labor_registry["mock_labor"] = MagicMock()
     mock_result = LaborResult(success=True, output_content="done")
     engine._labor_registry["mock_labor"].execute = AsyncMock(return_value=mock_result)
@@ -284,6 +294,7 @@ async def test_execute_stage_runs_labor_and_updates_workspace(tmp_path: Path) ->
 # ---------------------------------------------------------------------------
 # Tests: v1 ParallelChapterLabor
 # ---------------------------------------------------------------------------
+
 
 def test_parallel_chapter_labor_threshold_logic() -> None:
     """ParallelChapterLabor respects failure_threshold."""

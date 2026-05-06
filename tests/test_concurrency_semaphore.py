@@ -1,8 +1,9 @@
 """Tests for TaskScheduler concurrent task creation and isolation."""
 
-import pytest
 import asyncio
 import os
+
+import pytest
 
 from hermes_os.task_scheduler import TaskScheduler, TaskStatus
 
@@ -25,10 +26,12 @@ class TestConcurrencySemaphore:
     async def test_concurrent_task_creation(self, db_path: str) -> None:
         """Many tasks can be created concurrently without conflicts."""
         scheduler = TaskScheduler(db_path=db_path)
-        tasks = await asyncio.gather(*[
-            scheduler.create_task(user_id=f"u{i}", title=f"Task {i}", description=f"Desc {i}")
-            for i in range(20)
-        ])
+        tasks = await asyncio.gather(
+            *[
+                scheduler.create_task(user_id=f"u{i}", title=f"Task {i}", description=f"Desc {i}")
+                for i in range(20)
+            ]
+        )
         assert len(tasks) == 20
         for t in tasks:
             assert t.status == TaskStatus.PENDING

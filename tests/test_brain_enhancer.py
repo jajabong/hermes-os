@@ -1,18 +1,17 @@
 """Tests for BrainEnhancer — BrainIndexer + BrainUpdater."""
 
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
 import tempfile
-import os
+from pathlib import Path
 
-from hermes_os.brain_indexer import BrainIndexer, BrainIndex
+import pytest
+
+from hermes_os.brain_indexer import BrainIndex, BrainIndexer
 from hermes_os.brain_updater import BrainUpdater
-
 
 # ---------------------------------------------------------------------------
 # BrainIndexer tests
 # ---------------------------------------------------------------------------
+
 
 class TestBrainIndexerBasic:
     """Basic BrainIndexer functionality tests."""
@@ -39,7 +38,9 @@ class TestBrainIndexerBasic:
             (brain_dir / "MEMORY.md").write_text("# Memory\n\nTest memory content")
             (brain_dir / "USER.md").write_text("# User\nname: Test User\nrole: developer")
             (brain_dir / "wiki" / "项目").mkdir(parents=True)
-            (brain_dir / "wiki" / "项目" / "TestProject.md").write_text("# TestProject\nstatus: active")
+            (brain_dir / "wiki" / "项目" / "TestProject.md").write_text(
+                "# TestProject\nstatus: active"
+            )
 
             indexer = BrainIndexer(brain_base_path=Path(tmpdir))
             idx = await indexer.index_user("test_user")
@@ -92,7 +93,9 @@ class TestBrainIndexProjects:
         with tempfile.TemporaryDirectory() as tmpdir:
             brain_dir = Path(tmpdir) / "test_user" / "brain" / "wiki" / "项目"
             brain_dir.mkdir(parents=True)
-            (brain_dir / "TestProject.md").write_text("# TestProject\nstatus: active\nprogress: 50%")
+            (brain_dir / "TestProject.md").write_text(
+                "# TestProject\nstatus: active\nprogress: 50%"
+            )
 
             indexer = BrainIndexer(brain_base_path=Path(tmpdir))
             context = await indexer.get_project_context("test_user", "TestProject")
@@ -103,6 +106,7 @@ class TestBrainIndexProjects:
 # ---------------------------------------------------------------------------
 # BrainUpdater tests
 # ---------------------------------------------------------------------------
+
 
 class TestBrainUpdaterWrite:
     """BrainUpdater write operations."""
@@ -116,7 +120,8 @@ class TestBrainUpdaterWrite:
             mock_user_brain.mkdir(parents=True, exist_ok=True)
 
             # Create a real Task object
-            from hermes_os.task_scheduler import Task, TaskStatus, TaskPriority
+            from hermes_os.task_scheduler import Task, TaskPriority, TaskStatus
+
             task = Task(
                 task_id="t-001abcdef",
                 user_id="test_user",

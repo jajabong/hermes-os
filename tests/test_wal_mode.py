@@ -1,8 +1,9 @@
 """Tests for WAL mode enforcement on SQLite connections."""
 
-import pytest
 import os
 import tempfile
+
+import pytest
 
 from hermes_os.storage import Storage
 from hermes_os.task_scheduler import TaskScheduler

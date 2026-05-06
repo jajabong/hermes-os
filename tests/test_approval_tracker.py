@@ -1,17 +1,15 @@
 """Tests for ApprovalTracker — 时效追踪 for government document approvals."""
 
-import pytest
-import os
 import uuid
-import tempfile
-import shutil
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from datetime import datetime, timedelta, UTC
+
+import pytest
 
 from hermes_os.approval_tracker import (
-    ApprovalTracker,
-    ApprovalStatus,
     ApprovalRecord,
+    ApprovalStatus,
+    ApprovalTracker,
     _add_working_days,
 )
 
@@ -25,6 +23,7 @@ def temp_db_path(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 # _add_working_days tests
 # ---------------------------------------------------------------------------
+
 
 class TestAddWorkingDays:
     def test_add_0_days(self) -> None:
@@ -59,6 +58,7 @@ class TestAddWorkingDays:
 # ApprovalStatus tests
 # ---------------------------------------------------------------------------
 
+
 class TestApprovalStatus:
     def test_status_values(self) -> None:
         assert ApprovalStatus.PENDING.value == "pending"
@@ -70,6 +70,7 @@ class TestApprovalStatus:
 # ---------------------------------------------------------------------------
 # ApprovalRecord dataclass tests
 # ---------------------------------------------------------------------------
+
 
 class TestApprovalRecord:
     def test_record_creation(self) -> None:
@@ -94,6 +95,7 @@ class TestApprovalRecord:
 # ---------------------------------------------------------------------------
 # ApprovalTracker integration tests (DB-backed)
 # ---------------------------------------------------------------------------
+
 
 class TestApprovalTrackerSubmit:
     """Tests for submit_for_approval()."""
@@ -146,12 +148,18 @@ class TestApprovalTrackerSubmit:
     async def test_submit_multiple_creates_multiple(self, tracker: ApprovalTracker) -> None:
         await tracker.initialize()
         id1 = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="请示1",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="请示1",
         )
         id2 = await tracker.submit_for_approval(
-            task_id="t2", doc_type="report", user_id="alice",
-            approver_id="charlie", title="报告1",
+            task_id="t2",
+            doc_type="report",
+            user_id="alice",
+            approver_id="charlie",
+            title="报告1",
         )
 
         pending_alice = await tracker.get_pending_for_user("alice")
@@ -169,8 +177,11 @@ class TestApprovalTrackerApproveReject:
     async def test_approve_changes_status(self, tracker: ApprovalTracker) -> None:
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试请示",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试请示",
         )
 
         result = await tracker.approve(approval_id, approver_id="bob", comment="同意")
@@ -184,8 +195,11 @@ class TestApprovalTrackerApproveReject:
     async def test_reject_changes_status(self, tracker: ApprovalTracker) -> None:
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试请示",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试请示",
         )
 
         result = await tracker.reject(approval_id, approver_id="bob", comment="不同意")
@@ -198,8 +212,11 @@ class TestApprovalTrackerApproveReject:
     async def test_wrong_approver_returns_none(self, tracker: ApprovalTracker) -> None:
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试请示",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试请示",
         )
 
         # charlie is not the approver
@@ -215,8 +232,11 @@ class TestApprovalTrackerApproveReject:
     async def test_approve_non_pending_is_noop(self, tracker: ApprovalTracker) -> None:
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试请示",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试请示",
         )
 
         # First approve
@@ -242,17 +262,26 @@ class TestApprovalTrackerGetPending:
         await tracker.initialize()
         # Alice submits two requests to Bob
         id1 = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="请示1",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="请示1",
         )
         id2 = await tracker.submit_for_approval(
-            task_id="t2", doc_type="request", user_id="alice",
-            approver_id="bob", title="请示2",
+            task_id="t2",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="请示2",
         )
         # Charlie has one pending
         await tracker.submit_for_approval(
-            task_id="t3", doc_type="request", user_id="alice",
-            approver_id="charlie", title="请示3",
+            task_id="t3",
+            doc_type="request",
+            user_id="alice",
+            approver_id="charlie",
+            title="请示3",
         )
 
         bob_pending = await tracker.get_pending_for_approver("bob")
@@ -265,8 +294,11 @@ class TestApprovalTrackerGetPending:
     async def test_approved_not_in_pending(self, tracker: ApprovalTracker) -> None:
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="请示1",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="请示1",
         )
         await tracker.approve(approval_id, approver_id="bob")
 
@@ -285,8 +317,11 @@ class TestApprovalTrackerExpire:
     async def test_expire_changes_status(self, tracker: ApprovalTracker) -> None:
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试请示",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试请示",
         )
 
         expired = await tracker.expire(approval_id)
@@ -299,8 +334,11 @@ class TestApprovalTrackerExpire:
     async def test_expired_not_returned_by_get_pending(self, tracker: ApprovalTracker) -> None:
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试请示",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试请示",
         )
         await tracker.expire(approval_id)
 
@@ -320,8 +358,11 @@ class TestApprovalTrackerReminder:
         """reminder_at = deadline_at - 1 working day."""
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试",
             deadline_days=3,
         )
 
@@ -373,8 +414,11 @@ class TestApprovalTrackerEdgeCases:
         """Expiring an already decided approval returns None."""
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试",
         )
         await tracker.approve(approval_id, approver_id="bob")
 
@@ -386,8 +430,11 @@ class TestApprovalTrackerEdgeCases:
         """Custom deadline_days is respected."""
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="自定义截止日期",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="自定义截止日期",
             deadline_days=5,
         )
 
@@ -404,8 +451,11 @@ class TestApprovalTrackerEdgeCases:
         await tracker.initialize()
         metadata = {"priority": "high", "category": "budget"}
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="带元数据的请求",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="带元数据的请求",
             metadata=metadata,
         )
 
@@ -419,8 +469,11 @@ class TestApprovalTrackerEdgeCases:
         await tracker.initialize()
         # Submit a new approval
         await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试提醒",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试提醒",
         )
 
         reminders = await tracker.check_reminders()
@@ -433,8 +486,11 @@ class TestApprovalTrackerEdgeCases:
         await tracker.initialize()
         # Submit a new approval
         await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="测试过期",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="测试过期",
         )
 
         expired = await tracker.check_expired()
@@ -453,8 +509,11 @@ class TestApprovalTrackerEdgeCases:
         """Approving with None comment works correctly."""
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="无评论审批",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="无评论审批",
         )
 
         result = await tracker.approve(approval_id, approver_id="bob", comment=None)
@@ -468,8 +527,11 @@ class TestApprovalTrackerEdgeCases:
         """Rejecting with None comment works correctly."""
         await tracker.initialize()
         approval_id = await tracker.submit_for_approval(
-            task_id="t1", doc_type="request", user_id="alice",
-            approver_id="bob", title="无评论拒绝",
+            task_id="t1",
+            doc_type="request",
+            user_id="alice",
+            approver_id="bob",
+            title="无评论拒绝",
         )
 
         result = await tracker.reject(approval_id, approver_id="bob", comment=None)

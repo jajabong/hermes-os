@@ -7,20 +7,20 @@ Tests:
 - Uses ConclusionExtractor for 三段式 cards
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from datetime import datetime, UTC
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from hermes_os.notification_manager import (
-    NotificationManager,
-    NotificationEvent,
     _SEND_THRESHOLDS,
+    NotificationEvent,
+    NotificationManager,
 )
-
 
 # ---------------------------------------------------------------------------
 # NotificationEvent tests
 # ---------------------------------------------------------------------------
+
 
 class TestNotificationEvent:
     def test_event_values(self) -> None:
@@ -41,6 +41,7 @@ class TestNotificationEvent:
 # NotificationManager init tests
 # ---------------------------------------------------------------------------
 
+
 class TestNotificationManagerInit:
     def test_default_init(self) -> None:
         nm = NotificationManager()
@@ -56,6 +57,7 @@ class TestNotificationManagerInit:
 # ---------------------------------------------------------------------------
 # NotificationManager.send_notification tests
 # ---------------------------------------------------------------------------
+
 
 class TestSendNotification:
     @pytest.fixture
@@ -131,6 +133,7 @@ class TestSendNotification:
 # Heads-up notification tests
 # ---------------------------------------------------------------------------
 
+
 class TestHeadsUpNotification:
     @pytest.fixture
     def nm_with_mock(self) -> NotificationManager:
@@ -189,6 +192,7 @@ class TestHeadsUpNotification:
 # Goal context injection tests
 # ---------------------------------------------------------------------------
 
+
 class TestGoalContextInjection:
     @pytest.fixture
     def nm_with_mock(self) -> NotificationManager:
@@ -217,6 +221,7 @@ class TestGoalContextInjection:
 # ---------------------------------------------------------------------------
 # Threshold configuration tests
 # ---------------------------------------------------------------------------
+
 
 class TestSendThresholds:
     def test_heads_up_threshold_values(self) -> None:

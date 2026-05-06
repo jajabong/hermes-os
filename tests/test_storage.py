@@ -27,14 +27,11 @@ class TestMessagesSchema:
         # At least one index covering user_id should exist
         user_idxs = [n for n in index_names if "user" in n.lower() and "id" in n.lower()]
         assert len(user_idxs) >= 1, (
-            f"Expected index on user_id column in messages table. "
-            f"Found indexes: {index_names}"
+            f"Expected index on user_id column in messages table. Found indexes: {index_names}"
         )
 
     @pytest.mark.asyncio
-    async def test_messages_index_is_composite_user_id_timestamp(
-        self, db: Storage
-    ) -> None:
+    async def test_messages_index_is_composite_user_id_timestamp(self, db: Storage) -> None:
         """The index covers both user_id and timestamp for ORDER BY queries."""
         cursor = await db._db.execute(
             "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='messages'"
@@ -43,13 +40,9 @@ class TestMessagesSchema:
         index_sqls = {r["name"]: r["sql"] for r in rows if r["sql"]}
 
         # Should have an index on (user_id, timestamp) or similar covering both
-        has_composite = any(
-            "user_id" in sql and "timestamp" in sql
-            for sql in index_sqls.values()
-        )
+        has_composite = any("user_id" in sql and "timestamp" in sql for sql in index_sqls.values())
         assert has_composite, (
-            f"Expected composite index on (user_id, timestamp). "
-            f"Found indexes: {index_sqls}"
+            f"Expected composite index on (user_id, timestamp). Found indexes: {index_sqls}"
         )
 
 

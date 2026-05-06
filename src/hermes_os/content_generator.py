@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from hermes_os.claude_code_invocator import invoke
 from hermes_os.doc_workflow import DocType, DocWorkflowEngine
@@ -14,18 +14,20 @@ from hermes_os.doc_workflow import DocType, DocWorkflowEngine
 
 class ContentType(str, Enum):
     """Types of content that can be generated."""
-    INDUSTRY_REPORT = "industry_report"         # 产业研究报告
+
+    INDUSTRY_REPORT = "industry_report"  # 产业研究报告
     INVESTMENT_ANALYSIS = "investment_analysis"  # 投资分析
-    WORK_SUMMARY = "work_summary"               # 工作总结
-    MEETING_MINUTES = "meeting_minutes"          # 会议纪要
-    NOTICE = "notice"                           # 通知
-    RESEARCH_BRIEF = "research_brief"           # 研究简报
-    PROJECT_PLAN = "project_plan"               # 项目计划
+    WORK_SUMMARY = "work_summary"  # 工作总结
+    MEETING_MINUTES = "meeting_minutes"  # 会议纪要
+    NOTICE = "notice"  # 通知
+    RESEARCH_BRIEF = "research_brief"  # 研究简报
+    PROJECT_PLAN = "project_plan"  # 项目计划
 
 
 @dataclass
 class GenerationResult:
     """Result of content generation."""
+
     content_type: ContentType
     content: str
     source_count: int = 0
@@ -180,7 +182,8 @@ class ContentGeneratorAgent:
         Only works for NOTICE, REPORT, REQUEST, LETTER content types.
         """
         if not result.success:
-            from hermes_os.doc_workflow import DocWorkflowResult, ApprovalFlow
+            from hermes_os.doc_workflow import ApprovalFlow, DocWorkflowResult
+
             return DocWorkflowResult(
                 doc_type=DocType.NOTICE,
                 rendered_text="",
@@ -231,18 +234,14 @@ class ContentGeneratorAgent:
 
         return json.loads(result.stdout)
 
-    async def _stream_llm(
-        self, prompt: str
-    ) -> AsyncGenerator[str, None]:
+    async def _stream_llm(self, prompt: str) -> AsyncGenerator[str, None]:
         """Stream LLM output as chunks."""
         from hermes_os.claude_code_invocator import invoke_stream
 
         async for chunk in invoke_stream(prompt, model=f"claude-{self.model}-4-6"):
             yield chunk
 
-    def _render_content(
-        self, llm_output: dict[str, Any], content_type: ContentType
-    ) -> str:
+    def _render_content(self, llm_output: dict[str, Any], content_type: ContentType) -> str:
         """Render LLM output dict into a formatted document string."""
         title = llm_output.get("title", "")
         sections = llm_output.get("sections", {})
@@ -284,9 +283,7 @@ class ContentGeneratorAgent:
         }
         return mapping.get(ct, DocType.NOTICE)
 
-    def _extract_doc_values(
-        self, parsed: dict[str, Any], doc_type: DocType
-    ) -> dict[str, str]:
+    def _extract_doc_values(self, parsed: dict[str, Any], doc_type: DocType) -> dict[str, str]:
         """Extract doc workflow values from LLM output."""
         base = {
             "title": parsed.get("title", ""),
@@ -295,7 +292,9 @@ class ContentGeneratorAgent:
         }
 
         if doc_type in (DocType.NOTICE, DocType.LETTER):
-            base["body"] = parsed.get("body", "") or "\n\n".join(parsed.get("sections", {}).values())
+            base["body"] = parsed.get("body", "") or "\n\n".join(
+                parsed.get("sections", {}).values()
+            )
             base["to"] = parsed.get("to", "")
 
         elif doc_type == DocType.REPORT:

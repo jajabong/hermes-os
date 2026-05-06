@@ -10,14 +10,14 @@ Key requirements:
 - ROI_Planner allocates resources based on priority
 """
 
-import pytest
 import asyncio
 import tempfile
-import uuid
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from hermes_os.pipeline_engine_v2 import PipelineEngine, PipelineConfig, BatchArtifactMeta, StageStatus
+import pytest
+
+from hermes_os.pipeline_engine_v2 import (
+    PipelineConfig,
+)
 
 
 class TestBatchRunnerInterface:
@@ -28,6 +28,7 @@ class TestBatchRunnerInterface:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -37,8 +38,7 @@ class TestBatchRunnerInterface:
 
         runner = BatchRunner(base_dir=temp_dir, max_concurrency=5)
         configs = [
-            PipelineConfig(name=f"Pipeline-{i}", description="test", steps=[])
-            for i in range(10)
+            PipelineConfig(name=f"Pipeline-{i}", description="test", steps=[]) for i in range(10)
         ]
 
         results = await runner.launch(configs)
@@ -72,7 +72,9 @@ class TestBatchRunnerInterface:
         configs = [PipelineConfig(name=f"P-{i}", description="", steps=[]) for i in range(10)]
         await runner.launch(configs)
 
-        assert max_seen <= max_concurrent, f"Max concurrent {max_seen} exceeded limit {max_concurrent}"
+        assert max_seen <= max_concurrent, (
+            f"Max concurrent {max_seen} exceeded limit {max_concurrent}"
+        )
 
 
 class TestIdentityPool:
@@ -154,6 +156,7 @@ class TestPortfolioView:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     def test_portfolio_view_adds_artifact(self, temp_dir: str) -> None:
@@ -223,15 +226,16 @@ class TestScalableBusinessCube:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
     async def test_end_to_end_book_empire_pipeline(self, temp_dir: str) -> None:
         """Publication empire: 10 books in parallel, all stages."""
         from hermes_os.batch_runner import BatchRunner
+        from hermes_os.identity_pool import IdentityPool
         from hermes_os.portfolio_view import PortfolioView
         from hermes_os.roi_planner import ROIPlanner
-        from hermes_os.identity_pool import IdentityPool
         from hermes_os.universal_pipeline import PIPELINE_CONTENT_ASSEMBLY
 
         # 1. Create portfolio
@@ -247,10 +251,7 @@ class TestScalableBusinessCube:
         # 4. Launch 10 book pipelines in parallel
         runner = BatchRunner(base_dir=temp_dir, max_concurrency=5)
 
-        configs = [
-            PipelineConfig.from_yaml(PIPELINE_CONTENT_ASSEMBLY)
-            for _ in range(10)
-        ]
+        configs = [PipelineConfig.from_yaml(PIPELINE_CONTENT_ASSEMBLY) for _ in range(10)]
 
         results = await runner.launch(configs)
 
@@ -258,7 +259,7 @@ class TestScalableBusinessCube:
         for i, result in enumerate(results):
             portfolio.add_artifact(
                 artifact_id=result.workflow_id,
-                title=f"Book {i+1}",
+                title=f"Book {i + 1}",
                 domain="publication",
                 status="in_progress" if result.success else "failed",
             )

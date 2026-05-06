@@ -1,19 +1,18 @@
 """Tests for ResearchWorkflowEngine — parallel multi-source intelligence gathering."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from hermes_os.research_workflow import (
-    ResearchWorkflowEngine,
-    IntelligenceSource,
     IntelligenceResult,
+    IntelligenceSource,
+    ResearchWorkflowEngine,
     RiskFlag,
 )
-
 
 # ---------------------------------------------------------------------------
 # IntelligenceSource tests
 # ---------------------------------------------------------------------------
+
 
 class TestIntelligenceSource:
     def test_source_types(self) -> None:
@@ -28,6 +27,7 @@ class TestIntelligenceSource:
 # RiskFlag tests
 # ---------------------------------------------------------------------------
 
+
 class TestRiskFlag:
     def test_risk_levels(self) -> None:
         """All expected risk levels exist."""
@@ -40,6 +40,7 @@ class TestRiskFlag:
 # ---------------------------------------------------------------------------
 # IntelligenceResult tests
 # ---------------------------------------------------------------------------
+
 
 class TestIntelligenceResult:
     def test_success_result(self) -> None:
@@ -75,6 +76,7 @@ class TestIntelligenceResult:
 # ---------------------------------------------------------------------------
 # ResearchWorkflowEngine tests
 # ---------------------------------------------------------------------------
+
 
 class TestResearchWorkflowEngineInit:
     def test_init(self) -> None:

@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-from hermes_os.vertical_agent import get_agent_registry
 from hermes_os.agents.chief_agent_adapter import ChiefAgentAdapter
 from hermes_os.agents.labor_agent_adapter import LaborAgentAdapter
-from hermes_os.labor.content_labor import ContentLabor
-from hermes_os.labor.code_labor import CodeLabor
-from hermes_os.labor.github_labor import GitHubLabor
-from hermes_os.labor.checker_labor import CheckerLabor
-from hermes_os.labor.data_labor import DataLabor
 from hermes_os.labor.browser_labor import BrowserLabor
-from hermes_os.labor.research_labor import ResearchLabor
-from hermes_os.labor.format_labor import FormatLabor
+from hermes_os.labor.checker_labor import CheckerLabor
+from hermes_os.labor.code_labor import CodeLabor
+from hermes_os.labor.content_labor import ContentLabor
+from hermes_os.labor.data_labor import DataLabor
 from hermes_os.labor.feishu_labor import FeishuLabor
+from hermes_os.labor.format_labor import FormatLabor
+from hermes_os.labor.github_labor import GitHubLabor
 from hermes_os.labor.governance_labor import GovernanceLabor
+from hermes_os.labor.research_labor import ResearchLabor
+from hermes_os.vertical_agent import get_agent_registry
 
 
 def initialize_agents() -> None:

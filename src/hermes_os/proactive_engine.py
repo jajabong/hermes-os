@@ -17,13 +17,10 @@ from typing import TYPE_CHECKING
 from hermes_os.event_loop import Event, EventType, HermesOSEventLoop
 
 if TYPE_CHECKING:
+    from hermes_os.jarvis_interface import JarvisInterface
     from hermes_os.org_memory import OrgMemory
     from hermes_os.task_scheduler import Task, TaskScheduler
     from hermes_os.workflow_engine import WorkflowResult
-    from hermes_os.jarvis_interface import JarvisInterface
-    from hermes_os.user_registry import UserRegistry
-    from hermes_os.approval_tracker import ApprovalTracker
-    from hermes_os.governance_layer import GovernanceManager
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +28,9 @@ logger = logging.getLogger(__name__)
 _DEEP_PATROL_INTERVAL = 5  # every 5 minutes
 
 # Silence detection thresholds (in hours)
-SILENCE_GREETING_HOURS = 24   # → friendly greeting card
-SILENCE_REMINDER_HOURS = 72   # → goal/task reminder card
-SILENCE_URGENT_HOURS = 168    # → urgent outreach (1 week)
+SILENCE_GREETING_HOURS = 24  # → friendly greeting card
+SILENCE_REMINDER_HOURS = 72  # → goal/task reminder card
+SILENCE_URGENT_HOURS = 168  # → urgent outreach (1 week)
 
 
 class PatrolReport:
@@ -91,7 +88,7 @@ class ProactiveEngine:
 
     def __init__(self, scheduler: TaskScheduler | None = None) -> None:
         self._scheduler = scheduler
-        self._org_memory: "OrgMemory | None" = None
+        self._org_memory: OrgMemory | None = None
         self._last_deep_patrol_tick = 0
         self._pending_notifications: list[tuple[str, str]] = []
         # In-memory rate limiter: user_id → (count, window_start_ts)
@@ -101,7 +98,7 @@ class ProactiveEngine:
         """Inject scheduler after lazy initialization."""
         self._scheduler = scheduler
 
-    def set_org_memory(self, org_memory: "OrgMemory") -> None:
+    def set_org_memory(self, org_memory: OrgMemory) -> None:
         """Inject OrgMemory instance."""
         self._org_memory = org_memory
 
@@ -133,19 +130,21 @@ class ProactiveEngine:
     # Workflow engine access
     # -------------------------------------------------------------------------
 
-    def _get_workflow_engine(self) -> "WorkflowEngine":
+    def _get_workflow_engine(self) -> WorkflowEngine:
         """Get or create the workflow engine singleton."""
-        from hermes_os.workflow_engine import WorkflowEngine
         from hermes_os.hermes_tool_registry import get_tool_registry
+        from hermes_os.workflow_engine import WorkflowEngine
+
         if not hasattr(self, "_workflow_engine"):
             self._workflow_engine = WorkflowEngine()
             registry = get_tool_registry()
             registry.register_all_with(self._workflow_engine)
         return self._workflow_engine
 
-    def _get_jarvis(self) -> "JarvisInterface":
+    def _get_jarvis(self) -> JarvisInterface:
         """Get or create JarvisInterface singleton."""
         from hermes_os.jarvis_interface import JarvisInterface
+
         if not hasattr(self, "_jarvis"):
             self._jarvis = JarvisInterface()
         return self._jarvis
@@ -154,7 +153,7 @@ class ProactiveEngine:
         self,
         user_id: str,
         workflow_name: str,
-    ) -> "WorkflowResult":
+    ) -> WorkflowResult:
         """
         Execute a scheduled workflow (e.g., daily_briefing) for a user.
 
@@ -416,9 +415,7 @@ class ProactiveEngine:
                 dep_ids = task.depends_on or []
                 if not dep_ids:
                     # No dependencies but still blocked — unblock it
-                    await self._scheduler.update_task_status(
-                        task.task_id, task.status, error=None
-                    )
+                    await self._scheduler.update_task_status(task.task_id, task.status, error=None)
                     unblocked += 1
                     logger.info("Auto-unblocked task %s (no dependencies)", task.task_id)
                     continue
@@ -470,8 +467,7 @@ class ProactiveEngine:
                     continue
 
                 logger.warning(
-                    "Task %s has been running for a while. "
-                    "You may want to check its status.",
+                    "Task %s has been running for a while. You may want to check its status.",
                     task.task_id,
                 )
 
@@ -560,6 +556,7 @@ class ProactiveEngine:
 
                 # Get recent outputs (last 3)
                 from hermes_os.brain_updater import BrainUpdater
+
                 updater = BrainUpdater()
                 outputs = await updater.read_recent_outputs(output_dir, limit=3)
 
@@ -672,7 +669,9 @@ class ProactiveEngine:
                 if not state:
                     continue
 
-                last_msg_at_str = state["last_message_at"] if "last_message_at" in state.keys() else None
+                last_msg_at_str = (
+                    state["last_message_at"] if "last_message_at" in state.keys() else None
+                )
                 if not last_msg_at_str:
                     continue
 
@@ -688,11 +687,13 @@ class ProactiveEngine:
                 else:
                     continue  # Not silent enough
 
-                silent_users.append({
-                    "user_id": user_id,
-                    "silence_hours": silence_hours,
-                    "silence_level": level,
-                })
+                silent_users.append(
+                    {
+                        "user_id": user_id,
+                        "silence_hours": silence_hours,
+                        "silence_level": level,
+                    }
+                )
 
             except Exception:
                 continue
@@ -786,10 +787,7 @@ class ProactiveEngine:
                 parent_id = task.metadata.get("parent_task_id")
                 await self._enqueue_notification(
                     user_id=user_id,
-                    message=(
-                        f"✅ 自动修复任务完成: {task.title}\n"
-                        f"原始任务已解决。"
-                    ),
+                    message=(f"✅ 自动修复任务完成: {task.title}\n原始任务已解决。"),
                 )
 
             # Unblock any tasks waiting on this one
@@ -971,8 +969,7 @@ class ProactiveEngine:
                 for t in pending:
                     if t.metadata.get("macro_title"):
                         suggestions.append(
-                            f"📋 进行中的任务: {t.metadata['macro_title']}\n"
-                            f"  待处理: {t.title}"
+                            f"📋 进行中的任务: {t.metadata['macro_title']}\n  待处理: {t.title}"
                         )
             except Exception:
                 logger.exception("get_suggestions_for_user error")
@@ -984,6 +981,7 @@ class ProactiveEngine:
                     user_id=user_id,
                     scheduler=self._scheduler,
                     max_suggestions=3,
+                    org_memory=self._org_memory,
                 )
                 suggestions.extend(chief_suggestions)
             except Exception:
@@ -1061,10 +1059,7 @@ class ProactiveEngine:
                         combined = "\n".join(f"• {s}" for s in suggestions[:3])
                         await self._enqueue_notification(
                             user_id=user_id,
-                            message=(
-                                f"💡 主动建议：\n{combined}\n\n"
-                                f"有什么我可以帮您的吗？"
-                            ),
+                            message=(f"💡 主动建议：\n{combined}\n\n有什么我可以帮您的吗？"),
                         )
                 except Exception:
                     continue
@@ -1080,8 +1075,7 @@ class ProactiveEngine:
         failed = [t for t in user_tasks if t.status.value == "failed"][:1]
         for t in failed:
             suggestions.append(
-                f"❌ 失败任务需要关注: {t.title}\n"
-                f"  错误: {t.error[:60] if t.error else '未知'}..."
+                f"❌ 失败任务需要关注: {t.title}\n  错误: {t.error[:60] if t.error else '未知'}..."
             )
 
         blocked = [t for t in user_tasks if t.status.value == "blocked"][:1]
@@ -1093,8 +1087,7 @@ class ProactiveEngine:
         for t in pending:
             if t.metadata.get("macro_title"):
                 suggestions.append(
-                    f"📋 进行中的任务: {t.metadata['macro_title']}\n"
-                    f"  待处理: {t.title}"
+                    f"📋 进行中的任务: {t.metadata['macro_title']}\n  待处理: {t.title}"
                 )
 
         # ChiefAgent proactive suggestions
@@ -1104,6 +1097,7 @@ class ProactiveEngine:
                     user_id=user_id,
                     scheduler=self._scheduler,
                     max_suggestions=3,
+                    org_memory=self._org_memory,
                 )
                 suggestions.extend(chief_suggestions)
             except Exception:

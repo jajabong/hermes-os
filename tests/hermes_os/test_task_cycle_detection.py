@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from hermes_os.task_scheduler import Task, TaskStatus, TaskPriority
+from hermes_os.task_scheduler import Task, TaskPriority, TaskStatus
 
 
 def _make_task(
@@ -28,9 +26,10 @@ def _make_task(
 
 
 @pytest.fixture
-def scheduler(tmp_path: Path) -> "TaskScheduler":
+def scheduler(tmp_path: Path) -> TaskScheduler:
     """Create a scheduler with temp DB path."""
     from hermes_os.task_scheduler import TaskScheduler
+
     db_path = str(tmp_path / "test_scheduler.db")
     return TaskScheduler(db_path=db_path)
 
@@ -51,7 +50,9 @@ async def test_simple_cycle_detected(scheduler) -> None:
     """A→B→C→A is a cycle."""
     # Create task with depends_on referencing a later-created task
     # This creates a cycle when all three exist
-    id_a = await scheduler.create_task("alice", "Task A", depends_on=["X"])  # A→X, X doesn't exist yet
+    id_a = await scheduler.create_task(
+        "alice", "Task A", depends_on=["X"]
+    )  # A→X, X doesn't exist yet
     id_b = await scheduler.create_task("alice", "Task B", depends_on=["A"])
     id_x = await scheduler.create_task("alice", "Task X", depends_on=["B"])
 
@@ -97,7 +98,6 @@ async def test_get_runnable_excludes_cyclic(scheduler) -> None:
     id_c = await scheduler.create_task("alice", "Task C")
 
     # Manually update depends_on to create cycle via DB
-    from hermes_os.task_scheduler import TaskStatus
     # Cannot easily update depends_on without direct SQL
     # Test cycle detection with in-memory tasks instead
 

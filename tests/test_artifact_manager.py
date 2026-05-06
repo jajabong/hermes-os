@@ -8,23 +8,22 @@ Artifact workspace structure:
     └── meta.json     (stage, status, artifact_uri, dependency_hash)
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from datetime import datetime
+
+import pytest
 
 from hermes_os.artifact_manager import (
     ArtifactManager,
-    ArtifactWorkspace,
     ArtifactStage,
     ArtifactStatus,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def temp_base() -> Path:
@@ -41,6 +40,7 @@ def am(temp_base: Path) -> ArtifactManager:
 # ---------------------------------------------------------------------------
 # ArtifactStage tests
 # ---------------------------------------------------------------------------
+
 
 class TestArtifactStage:
     def test_stage_values(self) -> None:
@@ -68,6 +68,7 @@ class TestArtifactStage:
 # ---------------------------------------------------------------------------
 # ArtifactWorkspace tests
 # ---------------------------------------------------------------------------
+
 
 class TestArtifactWorkspaceInit:
     @pytest.mark.asyncio
@@ -100,6 +101,7 @@ class TestArtifactWorkspaceInit:
 # create_workspace tests
 # ---------------------------------------------------------------------------
 
+
 class TestCreateWorkspace:
     @pytest.mark.asyncio
     async def test_workspace_access_paths(self, am: ArtifactManager) -> None:
@@ -112,6 +114,7 @@ class TestCreateWorkspace:
     async def test_meta_persisted(self, am: ArtifactManager) -> None:
         ws = await am.create_workspace("t2")
         import json
+
         meta_path = ws.root_path / "meta.json"
         loaded = json.loads(meta_path.read_text("utf-8"))
         assert loaded["task_id"] == "t2"
@@ -126,6 +129,7 @@ class TestCreateWorkspace:
 # ---------------------------------------------------------------------------
 # update_stage tests
 # ---------------------------------------------------------------------------
+
 
 class TestUpdateStage:
     @pytest.mark.asyncio
@@ -153,6 +157,7 @@ class TestUpdateStage:
 # update_status tests
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateStatus:
     @pytest.mark.asyncio
     async def test_update_status_to_completed(self, am: ArtifactManager) -> None:
@@ -173,6 +178,7 @@ class TestUpdateStatus:
 # load_workspace tests
 # ---------------------------------------------------------------------------
 
+
 class TestLoadWorkspace:
     @pytest.mark.asyncio
     async def test_load_returns_workspace(self, am: ArtifactManager) -> None:
@@ -191,6 +197,7 @@ class TestLoadWorkspace:
 # set_artifact_uri tests
 # ---------------------------------------------------------------------------
 
+
 class TestSetArtifactUri:
     @pytest.mark.asyncio
     async def test_set_artifact_uri(self, am: ArtifactManager) -> None:
@@ -203,6 +210,7 @@ class TestSetArtifactUri:
 # ---------------------------------------------------------------------------
 # write_src / write_render / write_delivery tests
 # ---------------------------------------------------------------------------
+
 
 class TestWriteArtifactFiles:
     @pytest.mark.asyncio

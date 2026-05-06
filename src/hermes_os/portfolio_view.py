@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PortfolioArtifact:
     """A single artifact in the portfolio."""
+
     artifact_id: str
     title: str
     domain: str  # "publication", "patent", "short_drama"
@@ -58,6 +59,7 @@ class PortfolioArtifact:
 @dataclass
 class PortfolioSummary:
     """Aggregated portfolio statistics."""
+
     total: int
     completed: int
     in_progress: int

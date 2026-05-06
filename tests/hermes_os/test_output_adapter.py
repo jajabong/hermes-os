@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
-
-from hermes_os.output_adapter import OutputStyle, OutputAdapter
-
+from hermes_os.output_adapter import OutputAdapter, OutputStyle
 
 # ---------------------------------------------------------------------------
 # OutputStyle tests
 # ---------------------------------------------------------------------------
+
 
 def test_output_style_defaults() -> None:
     """OutputStyle should have sensible defaults."""
@@ -38,6 +36,7 @@ def test_output_style_full() -> None:
 # ---------------------------------------------------------------------------
 # OutputAdapter unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_adapt_truncates_long_output() -> None:
     """Output exceeding max_length should be truncated."""
@@ -68,7 +67,10 @@ def test_adapt_with_concise_tone() -> None:
     """Concise tone should produce shorter output."""
     adapter = OutputAdapter(preferences={"tone": "concise", "max_length": 2000, "language": "auto"})
     # Use text with proper sentence-ending punctuation
-    detailed_text = "根据我们的分析，首先，这是一个非常重要的发现。其次，我们需要考虑多个因素。最后，建议采取行动。" * 20
+    detailed_text = (
+        "根据我们的分析，首先，这是一个非常重要的发现。其次，我们需要考虑多个因素。最后，建议采取行动。"
+        * 20
+    )
     result = adapter.adapt(detailed_text)
     # Should be significantly shorter
     assert len(result) < len(detailed_text)
@@ -132,7 +134,14 @@ def test_adapt_none_output() -> None:
 
 def test_adapt_markdown_format() -> None:
     """Markdown format should preserve markdown syntax."""
-    adapter = OutputAdapter(preferences={"tone": "neutral", "max_length": 2000, "language": "auto", "format": "markdown"})
+    adapter = OutputAdapter(
+        preferences={
+            "tone": "neutral",
+            "max_length": 2000,
+            "language": "auto",
+            "format": "markdown",
+        }
+    )
     md_text = "## 标题\n\n这是**加粗**文本。\n\n- 列表项1\n- 列表项2"
     result = adapter.adapt(md_text)
     assert "## 标题" in result
@@ -142,7 +151,9 @@ def test_adapt_markdown_format() -> None:
 
 def test_adapt_plain_format() -> None:
     """Plain format should strip markdown syntax."""
-    adapter = OutputAdapter(preferences={"tone": "neutral", "max_length": 2000, "language": "auto", "format": "plain"})
+    adapter = OutputAdapter(
+        preferences={"tone": "neutral", "max_length": 2000, "language": "auto", "format": "plain"}
+    )
     md_text = "## 标题\n\n这是**加粗**文本。"
     result = adapter.adapt(md_text)
     assert "##" not in result
@@ -161,6 +172,7 @@ def test_adapt_with_no_preferences() -> None:
 # ---------------------------------------------------------------------------
 # Integration tests
 # ---------------------------------------------------------------------------
+
 
 def test_full_pipeline_style_adaptation() -> None:
     """Simulate a full pipeline: agent output → adapted for user preferences."""

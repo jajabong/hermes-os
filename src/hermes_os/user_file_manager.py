@@ -176,7 +176,9 @@ class UserFileManager:
 
     async def _write_json(self, path: Path, data: dict) -> None:
         loop = __import__("asyncio").get_running_loop()
-        await loop.run_in_executor(None, lambda: path.write_text(json.dumps(data, indent=2, ensure_ascii=False), "utf-8"))
+        await loop.run_in_executor(
+            None, lambda: path.write_text(json.dumps(data, indent=2, ensure_ascii=False), "utf-8")
+        )
 
     async def _read_json(self, path: Path) -> dict:
         loop = __import__("asyncio").get_running_loop()

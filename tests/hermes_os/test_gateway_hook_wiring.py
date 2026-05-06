@@ -13,8 +13,9 @@ import pytest
 
 
 @pytest.fixture
-def hook_config() -> "HookConfig":
+def hook_config() -> HookConfig:
     from hermes_os.gateway_hook import HookConfig
+
     return HookConfig(
         db_path=":memory:",
         knowledge_db_path=":memory:",
@@ -25,7 +26,7 @@ def hook_config() -> "HookConfig":
 def test_hook_wires_shard_manager_and_sharded_storage(hook_config) -> None:
     """HermesOSHook should create ShardManager + ShardedStorage and wire to ProactiveEngine."""
     from hermes_os.gateway_hook import HermesOSHook
-    from hermes_os.shard_manager import ShardManager, ShardedStorage
+    from hermes_os.shard_manager import ShardedStorage, ShardManager
 
     hook = HermesOSHook(config=hook_config)
 
@@ -51,8 +52,8 @@ def test_hook_wires_skill_discovery(hook_config) -> None:
 
 def test_hook_wires_chief_agent(hook_config) -> None:
     """HermesOSHook should wire its ChiefAgent into ProactiveEngine."""
-    from hermes_os.gateway_hook import HermesOSHook
     from hermes_os.chief_agent import ChiefAgent
+    from hermes_os.gateway_hook import HermesOSHook
 
     hook = HermesOSHook(config=hook_config)
 
@@ -74,7 +75,6 @@ def test_hook_creates_skill_discovery_with_correct_db_path(hook_config) -> None:
 def test_hook_wires_goal_tracker_to_chief(hook_config) -> None:
     """GoalTracker should be wired into ChiefAgent after initialization."""
     from hermes_os.gateway_hook import HermesOSHook
-    from hermes_os.goal_tracker import GoalTracker
 
     hook = HermesOSHook(config=hook_config)
 
@@ -87,6 +87,7 @@ def test_hook_wires_goal_tracker_to_chief(hook_config) -> None:
 # ---------------------------------------------------------------------------
 # Tests: background task helpers
 # ---------------------------------------------------------------------------
+
 
 def test_update_last_message_at_bg_handles_missing_storage(hook_config) -> None:
     """_update_last_message_at_bg should not raise if _sharded_storage is None."""
@@ -163,6 +164,7 @@ quality_score: 0.8
 # ---------------------------------------------------------------------------
 # Tests: close() cleanup
 # ---------------------------------------------------------------------------
+
 
 def test_close_cleans_up_sharded_storage(hook_config) -> None:
     """close() should close ShardedStorage connections."""

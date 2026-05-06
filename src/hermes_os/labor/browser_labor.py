@@ -11,7 +11,6 @@ M5_FINALIZE uses ContentLabor.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from pathlib import Path
@@ -63,12 +62,15 @@ class BrowserLabor:
         try:
             engine = meta.get("workflow_engine")
             if engine:
-                result = await engine._execute_tool("browser_check_login", {
-                    "platform": platform,
-                })
+                result = await engine._execute_tool(
+                    "browser_check_login",
+                    {
+                        "platform": platform,
+                    },
+                )
                 return result is not None and "logged_in" in str(result).lower()
             return await check_login_state(platform, meta)
-        except Exception as e:
+        except Exception:
             logger.exception("M1_STATEDAUTH failed")
             return False
 
@@ -81,18 +83,25 @@ class BrowserLabor:
         delivery_dir = workspace / "delivery"
         delivery_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info("BrowserLabor M2_FORMFILLING: platform=%s, fields=%s", platform, list(form_fields.keys()))
+        logger.info(
+            "BrowserLabor M2_FORMFILLING: platform=%s, fields=%s",
+            platform,
+            list(form_fields.keys()),
+        )
 
         try:
             engine = meta.get("workflow_engine")
             if engine:
-                result = await engine._execute_tool("browser_fill_form", {
-                    "platform": platform,
-                    "fields": form_fields,
-                })
+                result = await engine._execute_tool(
+                    "browser_fill_form",
+                    {
+                        "platform": platform,
+                        "fields": form_fields,
+                    },
+                )
                 return result is not None and "filled" in str(result).lower()
             return await fill_form(platform, form_fields, meta)
-        except Exception as e:
+        except Exception:
             logger.exception("M2_FORMFILLING failed")
             return False
 
@@ -110,14 +119,17 @@ class BrowserLabor:
         try:
             engine = meta.get("workflow_engine")
             if engine:
-                result = await engine._execute_tool("browser_upload_file", {
-                    "platform": platform,
-                    "file_path": file_path,
-                })
+                result = await engine._execute_tool(
+                    "browser_upload_file",
+                    {
+                        "platform": platform,
+                        "file_path": file_path,
+                    },
+                )
                 return result is not None and "url" in str(result).lower()
             upload_url = await upload_file(platform, file_path, workspace, meta)
             return upload_url is not None
-        except Exception as e:
+        except Exception:
             logger.exception("M3_UPLOAD failed")
             return False
 
@@ -128,18 +140,23 @@ class BrowserLabor:
         platform = meta.get("platform", "unknown")
         expected_text = meta.get("expected_text", "")
 
-        logger.info("BrowserLabor M4_VERIFICATION: platform=%s, expected=%s", platform, expected_text)
+        logger.info(
+            "BrowserLabor M4_VERIFICATION: platform=%s, expected=%s", platform, expected_text
+        )
 
         try:
             engine = meta.get("workflow_engine")
             if engine:
-                result = await engine._execute_tool("browser_verify_ui", {
-                    "platform": platform,
-                    "expected_text": expected_text,
-                })
+                result = await engine._execute_tool(
+                    "browser_verify_ui",
+                    {
+                        "platform": platform,
+                        "expected_text": expected_text,
+                    },
+                )
                 return result is not None and "verified" in str(result).lower()
             return await verify_ui_state(platform, expected_text, meta)
-        except Exception as e:
+        except Exception:
             logger.exception("M4_VERIFICATION failed")
             return False
 
@@ -147,6 +164,7 @@ class BrowserLabor:
 # ---------------------------------------------------------------------------
 # Browser automation functions (mock implementations - replace with real browser APIs)
 # ---------------------------------------------------------------------------
+
 
 async def check_login_state(platform: str, meta: dict[str, Any]) -> bool:
     """Check if user is logged in to the platform."""
@@ -162,7 +180,9 @@ async def fill_form(platform: str, form_fields: dict[str, Any], meta: dict[str, 
     return True
 
 
-async def upload_file(platform: str, file_path: str, workspace: Path, meta: dict[str, Any]) -> str | None:
+async def upload_file(
+    platform: str, file_path: str, workspace: Path, meta: dict[str, Any]
+) -> str | None:
     """Upload file to platform and return URL."""
     logger.info("Uploading file %s to platform: %s", file_path, platform)
     # Placeholder - in production, use browser automation to upload

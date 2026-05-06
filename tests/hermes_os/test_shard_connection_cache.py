@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 import pytest
 
-from hermes_os.shard_manager import ShardManager, ShardedStorage
+from hermes_os.shard_manager import ShardedStorage, ShardManager
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ Usage:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TaskAllocation:
     """Allocation result for a single task."""
+
     task_id: str
     task_type: str
     compute_units: int
@@ -32,9 +33,9 @@ class TaskAllocation:
 
 # Domain weights for strategic prioritization
 DOMAIN_WEIGHTS = {
-    "publication": 1.0,    # Core business
-    "patent": 1.2,         # High strategic value
-    "short_drama": 0.8,    # Experimental
+    "publication": 1.0,  # Core business
+    "patent": 1.2,  # High strategic value
+    "short_drama": 0.8,  # Experimental
     "default": 1.0,
 }
 
@@ -58,7 +59,7 @@ class ROIPlanner:
         ROI = revenue / cost
         """
         if cost == 0:
-            return float('inf') if revenue > 0 else 0.0
+            return float("inf") if revenue > 0 else 0.0
         return revenue / cost
 
     def calculate_priority(
@@ -138,17 +139,21 @@ class ROIPlanner:
             # Proportional allocation with minimum 1
             proportion = priority / total_priority
             allocated = max(1, int(compute_units * proportion))
-            allocations.append(TaskAllocation(
-                task_id=task_id,
-                task_type=task_type,
-                compute_units=allocated,
-                priority=priority,
-                roi=roi,
-            ))
+            allocations.append(
+                TaskAllocation(
+                    task_id=task_id,
+                    task_type=task_type,
+                    compute_units=allocated,
+                    priority=priority,
+                    roi=roi,
+                )
+            )
 
         logger.info(
             "Allocated %d compute units across %d tasks (max priority: %.2f)",
-            compute_units, len(tasks), max(p for _, _, p, _ in task_priorities) if task_priorities else 0
+            compute_units,
+            len(tasks),
+            max(p for _, _, p, _ in task_priorities) if task_priorities else 0,
         )
         return allocations
 
@@ -177,10 +182,7 @@ class ROIPlanner:
                 domain_roi[domain] = []
             domain_roi[domain].append(roi)
 
-        avg_roi = {
-            domain: sum(rois) / len(rois)
-            for domain, rois in domain_roi.items()
-        }
+        avg_roi = {domain: sum(rois) / len(rois) for domain, rois in domain_roi.items()}
 
         # Find best performing domain
         best_domain = max(avg_roi, key=avg_roi.get) if avg_roi else "default"

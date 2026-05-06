@@ -61,13 +61,15 @@ class GlobalWikiIndexer:
                 # Extract snippet (first 200 chars)
                 snippet = content[:200].replace("\n", " ").strip()
 
-                results.append({
-                    "category": category_dir.name,
-                    "file": md_file.stem,
-                    "path": str(md_file),
-                    "snippet": snippet,
-                    "source": "global_wiki",
-                })
+                results.append(
+                    {
+                        "category": category_dir.name,
+                        "file": md_file.stem,
+                        "path": str(md_file),
+                        "snippet": snippet,
+                        "source": "global_wiki",
+                    }
+                )
 
         return results
 
@@ -88,13 +90,15 @@ class GlobalWikiIndexer:
                 content = await self._read_file(md_file)
                 snippet = content[:200].replace("\n", " ").strip()
 
-                results.append({
-                    "category": category_dir.name,
-                    "file": md_file.stem,
-                    "path": str(md_file),
-                    "snippet": snippet,
-                    "source": "global_wiki",
-                })
+                results.append(
+                    {
+                        "category": category_dir.name,
+                        "file": md_file.stem,
+                        "path": str(md_file),
+                        "snippet": snippet,
+                        "source": "global_wiki",
+                    }
+                )
 
         return results
 

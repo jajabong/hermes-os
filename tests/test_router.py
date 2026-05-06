@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hermes_os.brain_indexer import BrainIndexer, BrainIndex
+from hermes_os.brain_indexer import BrainIndex, BrainIndexer
 from hermes_os.context_injector import ContextInjector
 from hermes_os.knowledge_router import KnowledgeRouter
 from hermes_os.memory_router import MemoryRouter
@@ -19,6 +19,7 @@ from hermes_os.user_registry import UserRegistry
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_registry() -> MagicMock:
@@ -51,11 +52,13 @@ def mock_knowledge() -> MagicMock:
 @pytest.fixture
 def mock_brain() -> MagicMock:
     brain = MagicMock(spec=BrainIndexer)
-    brain.index_user = AsyncMock(return_value=BrainIndex(
-        user_id="default",
-        memory_summary="",
-        active_projects=[],
-    ))
+    brain.index_user = AsyncMock(
+        return_value=BrainIndex(
+            user_id="default",
+            memory_summary="",
+            active_projects=[],
+        )
+    )
     return brain
 
 
@@ -107,6 +110,7 @@ def alice_user() -> User:
 # GatewayEvent dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestGatewayEvent:
     """Tests for GatewayEvent."""
 
@@ -138,6 +142,7 @@ class TestGatewayEvent:
 # RoutedRequest dataclass
 # ---------------------------------------------------------------------------
 
+
 class TestRoutedRequest:
     """Tests for RoutedRequest."""
 
@@ -154,6 +159,7 @@ class TestRoutedRequest:
 # ---------------------------------------------------------------------------
 # UserRouter.__init__
 # ---------------------------------------------------------------------------
+
 
 class TestUserRouterInit:
     """Tests for UserRouter initialization."""
@@ -189,6 +195,7 @@ class TestUserRouterInit:
 # ---------------------------------------------------------------------------
 # UserRouter.route()
 # ---------------------------------------------------------------------------
+
 
 class TestUserRouterRoute:
     """Tests for UserRouter.route()."""
@@ -382,6 +389,7 @@ class TestUserRouterRoute:
 # UserRouter.store_response()
 # ---------------------------------------------------------------------------
 
+
 class TestUserRouterStoreResponse:
     """Tests for UserRouter.store_response()."""
 
@@ -418,6 +426,7 @@ class TestUserRouterStoreResponse:
 # ---------------------------------------------------------------------------
 # Memory integration in route()
 # ---------------------------------------------------------------------------
+
 
 class TestStorageLifecycle:
     """Tests for Storage lifecycle management."""
@@ -500,10 +509,12 @@ class TestMemoryIntegration:
         mock_sessions.get = AsyncMock(return_value=session)
 
         # Simulate prior memory: user previously mentioned "JavaScript project"
-        mock_memory.search = AsyncMock(return_value=[
-            {"text": "Alice is working on a JavaScript project", "score": 0.9},
-            {"text": "Alice prefers dark mode", "score": 0.8},
-        ])
+        mock_memory.search = AsyncMock(
+            return_value=[
+                {"text": "Alice is working on a JavaScript project", "score": 0.9},
+                {"text": "Alice prefers dark mode", "score": 0.8},
+            ]
+        )
 
         router = UserRouter(
             registry=mock_registry,
@@ -523,7 +534,7 @@ class TestMemoryIntegration:
         mock_memory.search.assert_called_once()
         call_args = mock_memory.search.call_args
         assert call_args[0][0] == alice_user  # user object
-        assert call_args[0][1] == "Hello"      # query from event.message
+        assert call_args[0][1] == "Hello"  # query from event.message
 
         # Enriched message should contain memory content
         assert "JavaScript project" in result.enriched_message
@@ -582,13 +593,15 @@ class TestKnowledgeIntegration:
         session.add_message("user", "What is our deployment process?")
         mock_sessions.get = AsyncMock(return_value=session)
         mock_memory.search = AsyncMock(return_value=[])
-        mock_knowledge.search = AsyncMock(return_value=[
-            {
-                "doc_id": "deploy-guide",
-                "title": "Deployment Guide",
-                "content": "Run `make deploy` to deploy to production.",
-            },
-        ])
+        mock_knowledge.search = AsyncMock(
+            return_value=[
+                {
+                    "doc_id": "deploy-guide",
+                    "title": "Deployment Guide",
+                    "content": "Run `make deploy` to deploy to production.",
+                },
+            ]
+        )
 
         event = GatewayEvent(
             platform="telegram",
@@ -650,16 +663,20 @@ class TestKnowledgeIntegration:
         session = Session(session_id="s1", user_id=alice_user.user_id)
         session.add_message("user", "How do I deploy?")
         mock_sessions.get = AsyncMock(return_value=session)
-        mock_memory.search = AsyncMock(return_value=[
-            {"text": "Alice worked on the deploy script last week"},
-        ])
-        mock_knowledge.search = AsyncMock(return_value=[
-            {
-                "doc_id": "deploy-doc",
-                "title": "Deploy Doc",
-                "content": "Use `make deploy`.",
-            },
-        ])
+        mock_memory.search = AsyncMock(
+            return_value=[
+                {"text": "Alice worked on the deploy script last week"},
+            ]
+        )
+        mock_knowledge.search = AsyncMock(
+            return_value=[
+                {
+                    "doc_id": "deploy-doc",
+                    "title": "Deploy Doc",
+                    "content": "Use `make deploy`.",
+                },
+            ]
+        )
 
         event = GatewayEvent(
             platform="telegram",
@@ -680,6 +697,7 @@ class TestKnowledgeIntegration:
 # Brain integration in route()
 # ---------------------------------------------------------------------------
 
+
 class TestBrainIntegration:
     """Tests for BrainIndexer integration in route()."""
 
@@ -699,13 +717,15 @@ class TestBrainIntegration:
         mock_memory.search = AsyncMock(return_value=[])
 
         mock_brain = MagicMock(spec=BrainIndexer)
-        mock_brain.index_user = AsyncMock(return_value=BrainIndex(
-            user_id=alice_user.user_id,
-            memory_summary="Alice正在开发Hermes-OS项目",
-            user_profile={"name": "Alice", "role": "项目经理"},
-            active_projects=["Hermes-OS", "AI项目"],
-            recent_wiki_updates=["Hermes-OS v0.3"],
-        ))
+        mock_brain.index_user = AsyncMock(
+            return_value=BrainIndex(
+                user_id=alice_user.user_id,
+                memory_summary="Alice正在开发Hermes-OS项目",
+                user_profile={"name": "Alice", "role": "项目经理"},
+                active_projects=["Hermes-OS", "AI项目"],
+                recent_wiki_updates=["Hermes-OS v0.3"],
+            )
+        )
 
         router = UserRouter(
             registry=mock_registry,
@@ -742,11 +762,13 @@ class TestBrainIntegration:
         mock_memory.search = AsyncMock(return_value=[])
 
         mock_brain = MagicMock(spec=BrainIndexer)
-        mock_brain.index_user = AsyncMock(return_value=BrainIndex(
-            user_id=alice_user.user_id,
-            memory_summary="项目进展顺利",
-            active_projects=["政务系统", "数据分析平台"],
-        ))
+        mock_brain.index_user = AsyncMock(
+            return_value=BrainIndex(
+                user_id=alice_user.user_id,
+                memory_summary="项目进展顺利",
+                active_projects=["政务系统", "数据分析平台"],
+            )
+        )
 
         router = UserRouter(
             registry=mock_registry,
@@ -782,15 +804,19 @@ class TestBrainIntegration:
         session.add_message("user", "进展如何")
         mock_sessions.get = AsyncMock(return_value=session)
         mock_memory.search = AsyncMock(return_value=[])
-        mock_knowledge.search = AsyncMock(return_value=[
-            {"doc_id": "p1", "title": "项目指南", "content": "内容"},
-        ])
+        mock_knowledge.search = AsyncMock(
+            return_value=[
+                {"doc_id": "p1", "title": "项目指南", "content": "内容"},
+            ]
+        )
 
         mock_brain = MagicMock(spec=BrainIndexer)
-        mock_brain.index_user = AsyncMock(return_value=BrainIndex(
-            user_id=alice_user.user_id,
-            active_projects=["TestProject"],
-        ))
+        mock_brain.index_user = AsyncMock(
+            return_value=BrainIndex(
+                user_id=alice_user.user_id,
+                active_projects=["TestProject"],
+            )
+        )
 
         router = UserRouter(
             registry=mock_registry,
@@ -812,8 +838,9 @@ class TestBrainIntegration:
         # Brain project context should appear before knowledge block
         brain_pos = msg.find("TestProject")
         knowledge_pos = msg.find("<knowledge>")
-        assert brain_pos < knowledge_pos, \
+        assert brain_pos < knowledge_pos, (
             f"Brain context ({brain_pos}) should appear before <knowledge> ({knowledge_pos})"
+        )
 
     @pytest.mark.asyncio
     async def test_route_brain_not_called_when_user_has_no_brain(
@@ -832,11 +859,13 @@ class TestBrainIntegration:
 
         mock_brain = MagicMock(spec=BrainIndexer)
         # index_user returns empty BrainIndex for nonexistent user
-        mock_brain.index_user = AsyncMock(return_value=BrainIndex(
-            user_id=alice_user.user_id,
-            memory_summary="",
-            active_projects=[],
-        ))
+        mock_brain.index_user = AsyncMock(
+            return_value=BrainIndex(
+                user_id=alice_user.user_id,
+                memory_summary="",
+                active_projects=[],
+            )
+        )
 
         router = UserRouter(
             registry=mock_registry,

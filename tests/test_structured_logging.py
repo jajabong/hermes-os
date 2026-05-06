@@ -5,9 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from io import StringIO
-from unittest.mock import MagicMock
-
-import pytest
 
 
 class TestStructuredJsonFormatter:

@@ -29,11 +29,9 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
-import shutil
 import zipfile
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -50,11 +48,13 @@ logger = logging.getLogger(__name__)
 # Error Type Classification
 # ---------------------------------------------------------------------------
 
+
 class ErrorType(str, Enum):
     """Error classification based on root cause."""
-    TRANSIENT = "transient"    # Network/API — retry with backoff
-    LOGICAL = "logical"        # Model/Instruction — need correction
-    HANG = "hang"              # Timeout — escalate immediately
+
+    TRANSIENT = "transient"  # Network/API — retry with backoff
+    LOGICAL = "logical"  # Model/Instruction — need correction
+    HANG = "hang"  # Timeout — escalate immediately
     UNKNOWN = "unknown"
 
 
@@ -62,12 +62,14 @@ class ErrorType(str, Enum):
 # Escalation Decision
 # ---------------------------------------------------------------------------
 
+
 class EscalationDecision(str, Enum):
     """Decision from GuardianController after error analysis."""
-    RETRY = "retry"           # Exponential backoff retry
-    CORRECT = "correct"       # Prompt correction needed
-    ESCALATE = "escalate"     # Human intervention required
-    ABORT = "abort"           # Give up, mark failed
+
+    RETRY = "retry"  # Exponential backoff retry
+    CORRECT = "correct"  # Prompt correction needed
+    ESCALATE = "escalate"  # Human intervention required
+    ABORT = "abort"  # Give up, mark failed
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +116,7 @@ def _ensure_patterns() -> None:
 @dataclass
 class ErrorAttribution:
     """Result of error classification."""
+
     error_type: ErrorType
     retry_policy: str  # "exponential_backoff" | "prompt_correction" | "escalate"
     suggested_action: str
@@ -168,9 +171,11 @@ class ErrorAttribution:
 # Checkpoint Data
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CheckpointData:
     """State snapshot for a task/pipeline execution."""
+
     task_id: str
     stage: str
     status: str  # "pending" | "in_progress" | "completed" | "failed"
@@ -213,9 +218,11 @@ class CheckpointData:
 # Guardian Configuration
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class GuardianConfig:
     """Configuration for GuardianController behavior."""
+
     checkpoint_dir: Path | str = Path.home() / ".hermes" / "checkpoints"
     max_retries: int = 3
     base_backoff_seconds: float = 2.0
@@ -229,9 +236,11 @@ class GuardianConfig:
 # GuardianController
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class HandleResult:
     """Result of handle_invocation_error."""
+
     decision: EscalationDecision
     attribution: ErrorAttribution
     backoff_seconds: float = 0.0
@@ -277,6 +286,7 @@ class GuardianController:
                 self._jarvis = self._config.jarvis_factory()
             else:
                 from hermes_os.jarvis_interface import JarvisInterface
+
                 self._jarvis = JarvisInterface()
         return self._jarvis
 
@@ -328,7 +338,9 @@ class GuardianController:
                     if updated < cutoff:
                         self._logger.warning(
                             "Guardian: rescued stale checkpoint task_id=%s stage=%s updated=%s",
-                            cp.task_id, cp.stage, cp.updated_at,
+                            cp.task_id,
+                            cp.stage,
+                            cp.updated_at,
                         )
                         rescued.append(cp)
             except (json.JSONDecodeError, KeyError, ValueError):
@@ -361,15 +373,13 @@ class GuardianController:
 
     async def _compute_backoff_delay(self, retry_count: int) -> float:
         """Compute exponential backoff delay: base * 2^retry_count."""
-        return self._config.base_backoff_seconds * (2 ** retry_count)
+        return self._config.base_backoff_seconds * (2**retry_count)
 
     # -------------------------------------------------------------------------
     # Escalation Decision
     # -------------------------------------------------------------------------
 
-    async def _make_escalation_decision(
-        self, checkpoint: CheckpointData
-    ) -> EscalationDecision:
+    async def _make_escalation_decision(self, checkpoint: CheckpointData) -> EscalationDecision:
         """Decide whether to RETRY, CORRECT, or ESCALATE based on attribution."""
         if checkpoint.error_context:
             attr = await self._classify_error(checkpoint.error_context)
@@ -454,7 +464,10 @@ class GuardianController:
 
             self._logger.info(
                 "Guardian: task_id=%s error_type=%s decision=%s retry_count=%d",
-                task_id, attr.error_type.value, decision.value, cp.retry_count,
+                task_id,
+                attr.error_type.value,
+                decision.value,
+                cp.retry_count,
             )
 
             return HandleResult(
@@ -467,7 +480,8 @@ class GuardianController:
         except Exception as e:
             self._logger.error(
                 "Guardian: unexpected error in handle_invocation_error for task_id=%s: %s",
-                task_id, str(e),
+                task_id,
+                str(e),
             )
             return HandleResult(
                 decision=EscalationDecision.ESCALATE,
@@ -499,7 +513,7 @@ class GuardianController:
 
 ## Your previous approach:
 - Task was working on stage: {checkpoint.stage}
-- Completed stages so far: {', '.join(checkpoint.completed_stages) or 'none'}
+- Completed stages so far: {", ".join(checkpoint.completed_stages) or "none"}
 
 ## Required Correction:
 Based on the error diagnosis above, please:
@@ -542,13 +556,13 @@ Generate a corrected task description that avoids the previous error.
 **重试次数**: {cp.retry_count}/{self._config.max_retries}
 
 ### 归因分析
-**错误类型**: {attr.error_type.value if attr else 'unknown'}
-**诊断**: {attr.diagnosis if attr else '无错误上下文'}
-**建议动作**: {attr.suggested_action if attr else '未知'}
+**错误类型**: {attr.error_type.value if attr else "unknown"}
+**诊断**: {attr.diagnosis if attr else "无错误上下文"}
+**建议动作**: {attr.suggested_action if attr else "未知"}
 
 ### 当前状态
-**错误信息**: {cp.error_context or '无'}
-**Artifact URI**: {cp.artifact_uri or '未生成'}
+**错误信息**: {cp.error_context or "无"}
+**Artifact URI**: {cp.artifact_uri or "未生成"}
 
 ### 场景保护
 如需接管，Guardian 已将当前工作目录打包为 ZIP 附件。
@@ -577,9 +591,7 @@ Generate a corrected task description that avoids the previous error.
     # Scene Protection (zip artifact workspace)
     # -------------------------------------------------------------------------
 
-    async def protect_scene(
-        self, task_id: str, workspace_path: Path | str
-    ) -> Path | None:
+    async def protect_scene(self, task_id: str, workspace_path: Path | str) -> Path | None:
         """
         Create a ZIP snapshot of the current artifact workspace.
         Returns path to the ZIP file.

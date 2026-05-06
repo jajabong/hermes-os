@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-
-import pytest
 from typing import Any
 
+import pytest
+
 from hermes_os.vertical_agent import (
+    AgentRegistry,
     AgentRequest,
     AgentResult,
     VerticalAgent,
-    AgentRegistry,
     get_agent_registry,
 )
 
@@ -36,6 +36,7 @@ class NonConformingAgent:
 # ---------------------------------------------------------------------------
 # AgentRequest / AgentResult dataclass tests
 # ---------------------------------------------------------------------------
+
 
 def test_agent_request_dataclass() -> None:
     """AgentRequest should store intent, params, context."""
@@ -82,6 +83,7 @@ def test_agent_result_with_metadata() -> None:
 # VerticalAgent Protocol tests
 # ---------------------------------------------------------------------------
 
+
 def test_vertical_agent_protocol_conformance() -> None:
     """MockAgent should satisfy VerticalAgent Protocol at runtime."""
     agent = MockAgent()
@@ -97,6 +99,7 @@ def test_non_conforming_agent_fails_protocol_check() -> None:
 # ---------------------------------------------------------------------------
 # AgentRegistry tests
 # ---------------------------------------------------------------------------
+
 
 def test_agent_registry_register_and_get() -> None:
     """register() should store agent class; get_agent() should instantiate it."""

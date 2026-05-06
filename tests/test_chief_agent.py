@@ -6,10 +6,10 @@ import pytest
 
 from hermes_os.chief_agent import ChiefAgent, Intent, ParsedIntent
 
-
 # ---------------------------------------------------------------------------
 # should_auto_create_task tests
 # ---------------------------------------------------------------------------
+
 
 class TestShouldAutoCreateTask:
     """Tests for the auto-create decision threshold."""
@@ -18,21 +18,30 @@ class TestShouldAutoCreateTask:
     async def test_auto_create_high_confidence_fix_bug(self) -> None:
         """confidence >= 0.75 and action in FIX_BUG/DEPLOY/CODE/RESEARCH/BUILD/TEST → create."""
         chief = ChiefAgent()
-        intent = ParsedIntent(action=Intent.FIX_BUG, confidence=0.80, entities={}, raw_text="fix it")
+        intent = ParsedIntent(
+            action=Intent.FIX_BUG, confidence=0.80, entities={}, raw_text="fix it"
+        )
         assert await chief.should_auto_create_task(intent) is True
 
     @pytest.mark.asyncio
     async def test_auto_create_deploy(self) -> None:
         """DEPLOY intent with high confidence auto-creates."""
         chief = ChiefAgent()
-        intent = ParsedIntent(action=Intent.DEPLOY, confidence=0.9, entities={"target": "prod"}, raw_text="deploy to prod")
+        intent = ParsedIntent(
+            action=Intent.DEPLOY,
+            confidence=0.9,
+            entities={"target": "prod"},
+            raw_text="deploy to prod",
+        )
         assert await chief.should_auto_create_task(intent) is True
 
     @pytest.mark.asyncio
     async def test_no_auto_create_low_confidence(self) -> None:
         """confidence < 0.75 → no auto-create."""
         chief = ChiefAgent()
-        intent = ParsedIntent(action=Intent.CODE, confidence=0.6, entities={}, raw_text="maybe do something")
+        intent = ParsedIntent(
+            action=Intent.CODE, confidence=0.6, entities={}, raw_text="maybe do something"
+        )
         assert await chief.should_auto_create_task(intent) is False
 
     @pytest.mark.asyncio
@@ -46,13 +55,16 @@ class TestShouldAutoCreateTask:
     async def test_no_auto_create_query(self) -> None:
         """QUERY action does not auto-create (not in the auto-create list)."""
         chief = ChiefAgent()
-        intent = ParsedIntent(action=Intent.QUERY, confidence=0.9, entities={}, raw_text="what is X")
+        intent = ParsedIntent(
+            action=Intent.QUERY, confidence=0.9, entities={}, raw_text="what is X"
+        )
         assert await chief.should_auto_create_task(intent) is False
 
 
 # ---------------------------------------------------------------------------
 # _rule_based_parse tests
 # ---------------------------------------------------------------------------
+
 
 class TestRuleBasedParse:
     """Tests for the fallback rule-based intent parser."""
@@ -141,6 +153,7 @@ class TestRuleBasedParse:
 # parse_intent tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseIntent:
     """Tests for parse_intent() — uses invoke() or falls back to rule-based."""
 
@@ -218,12 +231,24 @@ async def test_should_auto_create_threshold_is_configurable() -> None:
 # Intent enum completeness
 # ---------------------------------------------------------------------------
 
+
 class TestIntentEnum:
     """Verify Intent enum has expected values."""
 
     def test_intent_values_complete(self) -> None:
         """All expected intent values exist in the enum."""
-        expected = {"fix_bug", "deploy", "research", "code", "review", "test", "build", "query", "unknown", "write_book"}
+        expected = {
+            "fix_bug",
+            "deploy",
+            "research",
+            "code",
+            "review",
+            "test",
+            "build",
+            "query",
+            "unknown",
+            "write_book",
+        }
         actual = {a.value for a in Intent}
         assert expected == actual
 

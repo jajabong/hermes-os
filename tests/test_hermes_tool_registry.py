@@ -1,8 +1,6 @@
 """Tests for HermesToolRegistry — bridges hermes-agent tools to WorkflowEngine."""
 
 import pytest
-from unittest.mock import MagicMock
-from pathlib import Path
 
 from hermes_os.hermes_tool_registry import (
     HermesToolRegistry,

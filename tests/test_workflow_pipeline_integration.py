@@ -7,14 +7,13 @@ it uses WorkflowEngine's registered tool handlers.
 RED phase: Define integration contract first.
 """
 
-import pytest
-import asyncio
 import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from hermes_os.workflow_engine import WorkflowEngine, Workflow, WorkflowStep, WorkflowResult
-from hermes_os.universal_pipeline import UniversalPipelineLoader, PipelineConfig
+import pytest
+
+from hermes_os.universal_pipeline import UniversalPipelineLoader
+from hermes_os.workflow_engine import WorkflowEngine
 
 
 class TestWorkflowPipelineIntegration:
@@ -25,6 +24,7 @@ class TestWorkflowPipelineIntegration:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.fixture
@@ -36,7 +36,10 @@ class TestWorkflowPipelineIntegration:
         return UniversalPipelineLoader()
 
     def test_workflow_engine_can_be_passed_to_pipeline_context(
-        self, workflow_engine: WorkflowEngine, pipeline_loader: UniversalPipelineLoader, temp_dir: str
+        self,
+        workflow_engine: WorkflowEngine,
+        pipeline_loader: UniversalPipelineLoader,
+        temp_dir: str,
     ) -> None:
         """WorkflowEngine instance should be passable as pipeline context."""
         config = pipeline_loader.load_pipeline("deployment")
@@ -51,9 +54,13 @@ class TestWorkflowPipelineIntegration:
 
     @pytest.mark.asyncio
     async def test_pipeline_stage_can_call_workflow_tools(
-        self, workflow_engine: WorkflowEngine, pipeline_loader: UniversalPipelineLoader, temp_dir: str
+        self,
+        workflow_engine: WorkflowEngine,
+        pipeline_loader: UniversalPipelineLoader,
+        temp_dir: str,
     ) -> None:
         """Pipeline stages should be able to call WorkflowEngine tools."""
+
         # Register a mock tool in WorkflowEngine
         async def mock_feishu_doc_handler(args, **kwargs):
             return f"doc_created: {args.get('title', 'untitled')}"
@@ -66,9 +73,13 @@ class TestWorkflowPipelineIntegration:
 
     @pytest.mark.asyncio
     async def test_feishu_labor_uses_workflow_engine_tools(
-        self, workflow_engine: WorkflowEngine, pipeline_loader: UniversalPipelineLoader, temp_dir: str
+        self,
+        workflow_engine: WorkflowEngine,
+        pipeline_loader: UniversalPipelineLoader,
+        temp_dir: str,
     ) -> None:
         """FeishuLabor (M6_DELIVERY) should use WorkflowEngine for feishu operations."""
+
         # Register feishu tools
         async def feishu_doc_create(args, **kwargs):
             return '{"doc_id": "test-123", "url": "https://feishu.cn/doc/test-123"}'
@@ -97,9 +108,13 @@ class TestWorkflowPipelineIntegration:
 
     @pytest.mark.asyncio
     async def test_browser_labor_uses_workflow_engine_tools(
-        self, workflow_engine: WorkflowEngine, pipeline_loader: UniversalPipelineLoader, temp_dir: str
+        self,
+        workflow_engine: WorkflowEngine,
+        pipeline_loader: UniversalPipelineLoader,
+        temp_dir: str,
     ) -> None:
         """BrowserLabor (M1-M4) should use WorkflowEngine for browser automation."""
+
         # Register browser tools
         async def browser_navigate(args, **kwargs):
             return '{"status": "loaded", "url": "https://amazon.com"}'
@@ -127,15 +142,18 @@ class TestWorkflowPipelineIntegration:
 
     @pytest.mark.asyncio
     async def test_workflow_result_can_feed_into_pipeline(
-        self, workflow_engine: WorkflowEngine, pipeline_loader: UniversalPipelineLoader, temp_dir: str
+        self,
+        workflow_engine: WorkflowEngine,
+        pipeline_loader: UniversalPipelineLoader,
+        temp_dir: str,
     ) -> None:
         """Workflow results should be usable as pipeline context for next stage."""
         # Execute workflow first
-        workflow_engine.register_tool("fetch_data", AsyncMock(return_value='{"repos": [{"name": "test"}]}'))
+        workflow_engine.register_tool(
+            "fetch_data", AsyncMock(return_value='{"repos": [{"name": "test"}]}')
+        )
         workflow_result = await workflow_engine.execute(
-            user_id="alice",
-            workflow_name="project_research",
-            context={"topic": "hermes-os"}
+            user_id="alice", workflow_name="project_research", context={"topic": "hermes-os"}
         )
 
         # Use workflow result as context for pipeline
@@ -160,6 +178,7 @@ class TestIntentToPipelineRouting:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.fixture
@@ -215,6 +234,7 @@ class TestPipelineToolIntegration:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio

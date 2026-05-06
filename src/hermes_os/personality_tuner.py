@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from hermes_os.emotion_types import EmotionState, TonePreference
 
-
 _ENCOURAGEMENT_PHRASES = ["一起加油", "别担心", "没关系", "慢慢来", "你能行的"]
 
 
@@ -68,9 +67,7 @@ class PersonalityTuner:
 
         return base_message
 
-    def _format_relaxed(
-        self, message: str, emoji_prefix: str, emotion: EmotionState
-    ) -> str:
+    def _format_relaxed(self, message: str, emoji_prefix: str, emotion: EmotionState) -> str:
         if emoji_prefix:
             return f"{emoji_prefix}{message}"
         # Default emoji for neutral/relaxed

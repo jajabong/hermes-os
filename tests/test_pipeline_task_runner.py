@@ -7,24 +7,24 @@ Integration pattern:
   - MilestoneNotifier fires JARVIS cards on stage completion
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from hermes_os.pipeline_task_runner import (
-    PipelineTaskRunner,
-    PipelineTaskContext,
     MilestoneNotifier,
+    PipelineTaskContext,
+    PipelineTaskRunner,
     StageMilestone,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def temp_pipeline_dir() -> Path:
@@ -53,6 +53,7 @@ def runner(temp_pipeline_dir: Path, mock_nm: MagicMock) -> PipelineTaskRunner:
 # PipelineTaskContext tests
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineTaskContext:
     def test_context_from_metadata(self) -> None:
         meta = {
@@ -75,6 +76,7 @@ class TestPipelineTaskContext:
 # ---------------------------------------------------------------------------
 # StageMilestone tests
 # ---------------------------------------------------------------------------
+
 
 class TestStageMilestone:
     def test_milestone_structure(self) -> None:
@@ -105,6 +107,7 @@ class TestStageMilestone:
 # ---------------------------------------------------------------------------
 # MilestoneNotifier tests
 # ---------------------------------------------------------------------------
+
 
 class TestMilestoneNotifier:
     @pytest.mark.asyncio
@@ -153,15 +156,21 @@ class TestMilestoneNotifier:
         await notifier.notify_stage(milestone, user_id="alice")
         call_kwargs = mock_nm.send_notification.call_args.kwargs
         # Should have failed notification
-        assert "render" in call_kwargs["task_title"].lower() or "failed" in call_kwargs["content"].lower()
+        assert (
+            "render" in call_kwargs["task_title"].lower()
+            or "failed" in call_kwargs["content"].lower()
+        )
 
 
 # ---------------------------------------------------------------------------
 # PipelineTaskRunner — is_pipeline_task
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineTaskRunnerInit:
-    def test_runner_has_artifact_base(self, runner: PipelineTaskRunner, temp_pipeline_dir: Path) -> None:
+    def test_runner_has_artifact_base(
+        self, runner: PipelineTaskRunner, temp_pipeline_dir: Path
+    ) -> None:
         assert runner._artifact_base == temp_pipeline_dir / "artifacts"
 
 
@@ -182,6 +191,7 @@ class TestIsPipelineTask:
 # ---------------------------------------------------------------------------
 # PipelineTaskRunner — execute_pipeline_task
 # ---------------------------------------------------------------------------
+
 
 class TestExecutePipelineTask:
     @pytest.mark.asyncio
@@ -247,6 +257,7 @@ class TestExecutePipelineTask:
         # Simulate adding outline to completed_stages
         ws.completed_stages.append("outline")
         import json
+
         ws.root_path.mkdir(parents=True, exist_ok=True)
         (ws.root_path / "pipeline_meta.json").write_text(
             json.dumps(ws.to_dict(), ensure_ascii=False), "utf-8"
@@ -302,6 +313,7 @@ class TestExecutePipelineTask:
 # ---------------------------------------------------------------------------
 # PipelineTaskRunner — Guardian integration
 # ---------------------------------------------------------------------------
+
 
 class TestGuardianIntegration:
     @pytest.mark.asyncio

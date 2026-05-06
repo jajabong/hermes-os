@@ -11,17 +11,20 @@ Tests:
 6. M5_GITMERGE: Branch management and PR creation
 """
 
-import pytest
-import asyncio
 import tempfile
-import subprocess
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from hermes_os.labor.code_labor import CodeLabor, verify_code_compiles, verify_tests_pass, verify_lint_clean
+import pytest
+
+from hermes_os.labor.code_labor import (
+    CodeLabor,
+    verify_code_compiles,
+    verify_lint_clean,
+    verify_tests_pass,
+)
 from hermes_os.universal_pipeline import (
     UniversalPipelineLoader,
-    PIPELINE_ENGINEERING,
 )
 
 
@@ -33,6 +36,7 @@ class TestCodeLaborInterface:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -118,7 +122,9 @@ class TestEngineeringPipelineStages:
         assert m4.labor == "CodeLabor"
         assert "lint" in m4.task.lower() or "style" in m4.task.lower()
 
-    def test_engineering_pipeline_m5_uses_githublabor(self, loader: UniversalPipelineLoader) -> None:
+    def test_engineering_pipeline_m5_uses_githublabor(
+        self, loader: UniversalPipelineLoader
+    ) -> None:
         """M5_GITMERGE should use GitHubLabor."""
         config = loader.load_pipeline("engineering")
         m5 = config.steps[4]
@@ -134,6 +140,7 @@ class TestCodeLaborPromptBuilding:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -146,11 +153,16 @@ class TestCodeLaborPromptBuilding:
 
         # Create a mock spec file
         spec_file = workspace / "src" / "spec.md"
-        spec_file.write_text("## Task: Add hello world function\n### Requirements\n- Function name: hello\n- Returns greeting", encoding="utf-8")
+        spec_file.write_text(
+            "## Task: Add hello world function\n### Requirements\n- Function name: hello\n- Returns greeting",
+            encoding="utf-8",
+        )
 
         with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value.ok = True
-            mock_invoke.return_value.stdout = "## Modification Spec\n- Add function `hello()` to `greeting.py`"
+            mock_invoke.return_value.stdout = (
+                "## Modification Spec\n- Add function `hello()` to `greeting.py`"
+            )
             mock_invoke.return_value.stderr = ""
 
             result = await labor.execute(
@@ -173,7 +185,9 @@ class TestCodeLaborPromptBuilding:
 
         # Create modification spec at the default location CodeLabor expects
         spec_file = workspace / "src" / "modification_spec.md"
-        spec_file.write_text("## Modification Spec\n- Add function `hello()` to `greeting.py`", encoding="utf-8")
+        spec_file.write_text(
+            "## Modification Spec\n- Add function `hello()` to `greeting.py`", encoding="utf-8"
+        )
 
         with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value.ok = True
@@ -205,7 +219,10 @@ class TestCodeLaborPromptBuilding:
         result = await labor.execute(
             workspace=workspace,
             task_description="Run test cases",
-            meta={"stage": "M3_SELFTEST", "test_command": "echo 'test'"},  # Use echo to avoid python dependency
+            meta={
+                "stage": "M3_SELFTEST",
+                "test_command": "echo 'test'",
+            },  # Use echo to avoid python dependency
         )
         # Result will be False because echo doesn't produce pytest-style output, but it proves the stage exists
 
@@ -218,6 +235,7 @@ class TestGitHubLabor:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio

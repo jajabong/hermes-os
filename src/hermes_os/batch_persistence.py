@@ -14,7 +14,6 @@ Uses TaskScheduler patterns:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -29,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineRun:
     """A persisted pipeline run record."""
+
     run_id: str
     artifact_id: str
     pipeline_name: str
@@ -57,7 +57,7 @@ class PipelineRun:
         }
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "PipelineRun":
+    def from_row(cls, row: dict[str, Any]) -> PipelineRun:
         return cls(
             run_id=row["run_id"],
             artifact_id=row["artifact_id"],
@@ -133,24 +133,27 @@ class BatchPersistence:
         async with self._lock:
             db = await self._get_db()
             run.updated_at = datetime.now(UTC).isoformat()
-            await db.execute("""
+            await db.execute(
+                """
                 INSERT OR REPLACE INTO pipeline_runs
                 (run_id, artifact_id, pipeline_name, status, current_stage,
                  stages_completed, total_stages, error, created_at, updated_at, metadata_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                run.run_id,
-                run.artifact_id,
-                run.pipeline_name,
-                run.status,
-                run.current_stage,
-                run.stages_completed,
-                run.total_stages,
-                run.error,
-                run.created_at,
-                run.updated_at,
-                run.metadata_json,
-            ))
+            """,
+                (
+                    run.run_id,
+                    run.artifact_id,
+                    run.pipeline_name,
+                    run.status,
+                    run.current_stage,
+                    run.stages_completed,
+                    run.total_stages,
+                    run.error,
+                    run.created_at,
+                    run.updated_at,
+                    run.metadata_json,
+                ),
+            )
             await db.commit()
             logger.debug("Saved run %s: status=%s", run.run_id, run.status)
 
@@ -213,11 +216,14 @@ class BatchPersistence:
         async with self._lock:
             db = await self._get_db()
             updated_at = datetime.now(UTC).isoformat()
-            await db.execute("""
+            await db.execute(
+                """
                 UPDATE pipeline_runs
                 SET status = ?, current_stage = ?, stages_completed = ?, error = ?, updated_at = ?
                 WHERE run_id = ?
-            """, (status, current_stage, stages_completed, error, updated_at, run_id))
+            """,
+                (status, current_stage, stages_completed, error, updated_at, run_id),
+            )
             await db.commit()
 
     async def delete_run(self, run_id: str) -> bool:

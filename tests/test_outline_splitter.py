@@ -5,22 +5,18 @@ N parallel sub-tasks.
 """
 
 import pytest
-import tempfile
-import shutil
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from hermes_os.outline_splitter import (
-    OutlineSplitter,
     Chapter,
     ChapterWriteTask,
+    OutlineSplitter,
     SplitResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_outline() -> str:
@@ -42,6 +38,7 @@ def sample_outline() -> str:
 # ---------------------------------------------------------------------------
 # Chapter dataclass tests
 # ---------------------------------------------------------------------------
+
 
 class TestChapter:
     def test_chapter_structure(self) -> None:
@@ -66,6 +63,7 @@ class TestChapter:
 # ChapterWriteTask dataclass tests
 # ---------------------------------------------------------------------------
 
+
 class TestChapterWriteTask:
     def test_task_structure(self) -> None:
         task = ChapterWriteTask(
@@ -81,6 +79,7 @@ class TestChapterWriteTask:
 # ---------------------------------------------------------------------------
 # OutlineSplitter tests
 # ---------------------------------------------------------------------------
+
 
 class TestOutlineSplitter:
     def test_split_extracts_chapters(self, sample_outline: str) -> None:
@@ -125,6 +124,7 @@ class TestOutlineSplitter:
 # SplitResult tests
 # ---------------------------------------------------------------------------
 
+
 class TestSplitResult:
     def test_result_structure(self) -> None:
         chapters = [
@@ -140,7 +140,9 @@ class TestSplitResult:
         assert result.total_words_estimate == 5000
 
     def test_result_chapters_list(self) -> None:
-        chapters = [Chapter(number=i, title=f"Chapter {i}", section="", description="") for i in range(1, 4)]
+        chapters = [
+            Chapter(number=i, title=f"Chapter {i}", section="", description="") for i in range(1, 4)
+        ]
         result = SplitResult(source_outline="", chapters=chapters, total_words_estimate=0)
         assert result.total_chapters == 3
 
@@ -148,6 +150,7 @@ class TestSplitResult:
 # ---------------------------------------------------------------------------
 # Prompt generation tests
 # ---------------------------------------------------------------------------
+
 
 class TestPromptGeneration:
     def test_build_chapter_prompt(self, sample_outline: str) -> None:
@@ -163,8 +166,6 @@ class TestPromptGeneration:
         # For chapter 3, should reference chapter 2 context
         if len(chapters) >= 3:
             prompt = splitter.build_chapter_prompt(
-                chapters[2], sample_outline,
-                topic="AI历史",
-                previous_chapters=[chapters[1].title]
+                chapters[2], sample_outline, topic="AI历史", previous_chapters=[chapters[1].title]
             )
             assert chapters[1].title in prompt

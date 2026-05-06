@@ -3,19 +3,20 @@
 Tests the upgrade from placeholder content to real LLM-generated content.
 """
 
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from hermes_os.pipeline_engine import ContentLabor, PipelineWorkspace, LaborResult
-from hermes_os.pipeline_task_runner import StageMilestone
+import pytest
 
+from hermes_os.pipeline_engine import ContentLabor
+from hermes_os.pipeline_task_runner import StageMilestone
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_invoke_result() -> MagicMock:
@@ -28,6 +29,7 @@ def mock_invoke_result() -> MagicMock:
 # ---------------------------------------------------------------------------
 # ContentLabor.invoke tests (mocked LLM)
 # ---------------------------------------------------------------------------
+
 
 class TestContentLaborInvoke:
     @pytest.mark.asyncio
@@ -50,7 +52,9 @@ class TestContentLaborInvoke:
             mock_invoke.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_invoke_includes_input_artifact_context(self, mock_invoke_result: MagicMock) -> None:
+    async def test_invoke_includes_input_artifact_context(
+        self, mock_invoke_result: MagicMock
+    ) -> None:
         """When input_artifact exists, its content should be included in the prompt."""
         labor = ContentLabor()
 
@@ -63,7 +67,9 @@ class TestContentLaborInvoke:
             input_file = tmp / "research.md"
             input_file.write_text("# Research Notes\n\nAI was founded in 1956.", "utf-8")
 
-            with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
+            with patch(
+                "hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock
+            ) as mock_invoke:
                 mock_invoke.return_value = mock_invoke_result
                 result = await labor.execute(
                     description="Create an outline based on research",
@@ -119,6 +125,7 @@ class TestContentLaborInvoke:
 # ---------------------------------------------------------------------------
 # StageMilestone with real content tests
 # ---------------------------------------------------------------------------
+
 
 class TestStageMilestoneWithContent:
     @pytest.mark.asyncio

@@ -8,25 +8,19 @@ This module tests:
 3. All 5 Pipelines can be loaded and executed through the same interface
 """
 
-import pytest
-import asyncio
 import tempfile
-import yaml
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
+
+import pytest
 
 from hermes_os.universal_pipeline import (
-    LaborRegistry,
-    LaborHandler,
-    StageResult,
-    PipelineLoadError,
-    UniversalPipelineLoader,
     # 5 Pipeline types
-    PIPELINE_CONTENT_ASSEMBLY,
-    PIPELINE_ENGINEERING,
-    PIPELINE_INTELLIGENCE,
-    PIPELINE_DEPLOYMENT,
-    PIPELINE_GOVERNANCE,
+    LaborHandler,
+    LaborRegistry,
+    PipelineLoadError,
+    StageResult,
+    UniversalPipelineLoader,
 )
 
 
@@ -86,13 +80,16 @@ class TestUniversalPipelineLoader:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.fixture
     def loader(self) -> UniversalPipelineLoader:
         return UniversalPipelineLoader()
 
-    def test_loads_valid_pipeline_yaml(self, loader: UniversalPipelineLoader, temp_dir: str) -> None:
+    def test_loads_valid_pipeline_yaml(
+        self, loader: UniversalPipelineLoader, temp_dir: str
+    ) -> None:
         """Loader can parse a valid Pipeline.yaml."""
         yaml_content = """
 name: "Test Pipeline"
@@ -122,12 +119,20 @@ steps:
 
     def test_loads_all_5_pipelines(self, loader: UniversalPipelineLoader) -> None:
         """Loader can load all 5 pipeline definitions."""
-        for pipeline_name in ["content_assembly", "engineering", "intelligence", "deployment", "governance"]:
+        for pipeline_name in [
+            "content_assembly",
+            "engineering",
+            "intelligence",
+            "deployment",
+            "governance",
+        ]:
             config = loader.load_pipeline(pipeline_name)
             assert config.name is not None
             assert len(config.steps) > 0
 
-    def test_load_raises_on_invalid_yaml(self, loader: UniversalPipelineLoader, temp_dir: str) -> None:
+    def test_load_raises_on_invalid_yaml(
+        self, loader: UniversalPipelineLoader, temp_dir: str
+    ) -> None:
         """Loader raises PipelineLoadError on malformed YAML."""
         yaml_path = Path(temp_dir) / "invalid.yaml"
         yaml_path.write_text("invalid: [yaml: content", encoding="utf-8")
@@ -135,7 +140,9 @@ steps:
             loader.load(str(yaml_path))
 
     @pytest.mark.asyncio
-    async def test_execute_stage_calls_labor(self, loader: UniversalPipelineLoader, temp_dir: str) -> None:
+    async def test_execute_stage_calls_labor(
+        self, loader: UniversalPipelineLoader, temp_dir: str
+    ) -> None:
         """execute_stage() calls the registered Labor handler."""
         # Create a mock handler
         mock_handler = LaborHandler(
@@ -164,7 +171,9 @@ steps:
         assert mock_handler.execute.called
 
     @pytest.mark.asyncio
-    async def test_execute_full_pipeline(self, loader: UniversalPipelineLoader, temp_dir: str) -> None:
+    async def test_execute_full_pipeline(
+        self, loader: UniversalPipelineLoader, temp_dir: str
+    ) -> None:
         """execute_full_pipeline() runs all stages in sequence."""
         # Mock all handlers to succeed
         for labor_name in loader.registry._handlers.keys():
@@ -192,7 +201,14 @@ class TestPipelineDefinitions:
         """Content Assembly Pipeline: M1_OUTLINE → M6_DELIVERY."""
         config = UniversalPipelineLoader().load_pipeline("content_assembly")
         stages = [s.stage for s in config.steps]
-        expected = ["M1_OUTLINE", "M2_RESEARCH", "M3_DRAFTING", "M4_RENDERING", "M5_AUDIT", "M6_DELIVERY"]
+        expected = [
+            "M1_OUTLINE",
+            "M2_RESEARCH",
+            "M3_DRAFTING",
+            "M4_RENDERING",
+            "M5_AUDIT",
+            "M6_DELIVERY",
+        ]
         assert stages == expected
 
     def test_engineering_has_5_stages(self) -> None:
@@ -213,7 +229,13 @@ class TestPipelineDefinitions:
         """Deployment Pipeline: M1_StateAuth → M5_Finalize."""
         config = UniversalPipelineLoader().load_pipeline("deployment")
         stages = [s.stage for s in config.steps]
-        expected = ["M1_STATEDAUTH", "M2_FORMFILLING", "M3_UPLOAD", "M4_VERIFICATION", "M5_FINALIZE"]
+        expected = [
+            "M1_STATEDAUTH",
+            "M2_FORMFILLING",
+            "M3_UPLOAD",
+            "M4_VERIFICATION",
+            "M5_FINALIZE",
+        ]
         assert stages == expected
 
     def test_governance_has_4_stages(self) -> None:

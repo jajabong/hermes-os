@@ -38,7 +38,7 @@ class BrainUpdater:
 
     async def after_task_complete(
         self,
-        task: "Task",
+        task: Task,
         result: str,
         user_brain_path: Path | None = None,
     ) -> bool:
@@ -149,7 +149,7 @@ class BrainUpdater:
     # Helpers
     # -------------------------------------------------------------------------
 
-    def _format_output(self, task: "Task", result: str) -> str:
+    def _format_output(self, task: Task, result: str) -> str:
         """Format task result as a brain output entry."""
         title = task.title or "Untitled"
         task_id = task.task_id[:8]
@@ -162,7 +162,7 @@ class BrainUpdater:
 
 **Task ID**: {task_id}
 **Completed**: {timestamp}
-**Status**: {task.status.value if hasattr(task.status, 'value') else str(task.status)}
+**Status**: {task.status.value if hasattr(task.status, "value") else str(task.status)}
 
 ## Result
 
@@ -170,7 +170,7 @@ class BrainUpdater:
 
 ## Metadata
 
-- Priority: {task.priority.value if hasattr(task.priority, 'value') else str(task.priority)}
+- Priority: {task.priority.value if hasattr(task.priority, "value") else str(task.priority)}
 """
 
     def _build_project_wiki(

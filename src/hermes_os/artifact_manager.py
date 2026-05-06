@@ -10,19 +10,18 @@ Workspace structure:
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import IntEnum
 from pathlib import Path
 from typing import Any
 
-import aiosqlite
-
 
 class ArtifactStage(IntEnum):
     """Stage of artifact production, ordered for pipeline progression."""
+
     CREATED = 0
     RESEARCH = 1
     WRITING = 2
@@ -41,6 +40,7 @@ class ArtifactStatus:
 @dataclass
 class ArtifactMeta:
     """Metadata for an artifact workspace."""
+
     task_id: str
     stage: ArtifactStage = ArtifactStage.CREATED
     status: ArtifactStatus = ArtifactStatus.IN_PROGRESS
@@ -49,21 +49,25 @@ class ArtifactMeta:
     parent_artifact_id: str = ""  # Links to upstream artifact (Artifact Handover Protocol)
     last_updated: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     user_id: str = ""
-    
+
     # --- Commercial Intuition Layer (ROI Metrics) ---
-    liabilities: dict[str, Any] = field(default_factory=lambda: {
-        "token_usage": 0,
-        "api_cost_usd": 0.0,
-        "compute_hours": 0.0,
-        "human_intervention_count": 0
-    })
-    equity: dict[str, Any] = field(default_factory=lambda: {
-        "realized_revenue_usd": 0.0,
-        "valuation_usd": 0.0,
-        "market_traction": {"sales_count": 0, "citations": 0}
-    })
+    liabilities: dict[str, Any] = field(
+        default_factory=lambda: {
+            "token_usage": 0,
+            "api_cost_usd": 0.0,
+            "compute_hours": 0.0,
+            "human_intervention_count": 0,
+        }
+    )
+    equity: dict[str, Any] = field(
+        default_factory=lambda: {
+            "realized_revenue_usd": 0.0,
+            "valuation_usd": 0.0,
+            "market_traction": {"sales_count": 0, "citations": 0},
+        }
+    )
     roi: float = 0.0
-    
+
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -82,12 +86,18 @@ class ArtifactMeta:
             parent_artifact_id=data.get("parent_artifact_id", ""),
             last_updated=data.get("last_updated", datetime.now(UTC).isoformat()),
             user_id=data.get("user_id", ""),
-            liabilities=data.get("liabilities", {
-                "token_usage": 0, "api_cost_usd": 0.0, "compute_hours": 0.0, "human_intervention_count": 0
-            }),
-            equity=data.get("equity", {
-                "realized_revenue_usd": 0.0, "valuation_usd": 0.0, "market_traction": {}
-            }),
+            liabilities=data.get(
+                "liabilities",
+                {
+                    "token_usage": 0,
+                    "api_cost_usd": 0.0,
+                    "compute_hours": 0.0,
+                    "human_intervention_count": 0,
+                },
+            ),
+            equity=data.get(
+                "equity", {"realized_revenue_usd": 0.0, "valuation_usd": 0.0, "market_traction": {}}
+            ),
             roi=data.get("roi", 0.0),
             metadata=data.get("metadata", {}),
         )
@@ -121,6 +131,7 @@ class ArtifactMeta:
 @dataclass
 class ArtifactWorkspace:
     """A single artifact workspace with structured directories."""
+
     task_id: str
     user_id: str
     root_path: Path
@@ -152,7 +163,9 @@ class ArtifactManager:
     # Workspace lifecycle
     # ---------------------------------------------------------------------------
 
-    async def create_workspace(self, task_id: str, user_id: str = "", context: dict[str, Any] | None = None) -> ArtifactWorkspace:
+    async def create_workspace(
+        self, task_id: str, user_id: str = "", context: dict[str, Any] | None = None
+    ) -> ArtifactWorkspace:
         """Create a new artifact workspace for a task.
 
         Args:
@@ -280,7 +293,9 @@ class ArtifactManager:
         self._write_meta(ws.root_path, ws.meta)
         return ws
 
-    async def set_parent_artifact_id(self, task_id: str, parent_artifact_id: str) -> ArtifactWorkspace | None:
+    async def set_parent_artifact_id(
+        self, task_id: str, parent_artifact_id: str
+    ) -> ArtifactWorkspace | None:
         """Set the parent artifact ID for artifact lineage tracking (Artifact Handover Protocol)."""
         ws = await self.load_workspace(task_id)
         if ws is None:
@@ -362,9 +377,7 @@ class ArtifactManager:
     # File writing helpers
     # ---------------------------------------------------------------------------
 
-    async def write_src(
-        self, task_id: str, filename: str, content: str
-    ) -> Path:
+    async def write_src(self, task_id: str, filename: str, content: str) -> Path:
         """Write a source file into the workspace src/ directory."""
         ws = await self.load_workspace(task_id)
         if ws is None:
@@ -374,9 +387,7 @@ class ArtifactManager:
         path.write_text(content, "utf-8")
         return path
 
-    async def write_render(
-        self, task_id: str, filename: str, content: str
-    ) -> Path:
+    async def write_render(self, task_id: str, filename: str, content: str) -> Path:
         """Write a render file into the workspace render/ directory."""
         ws = await self.load_workspace(task_id)
         if ws is None:
@@ -386,9 +397,7 @@ class ArtifactManager:
         path.write_text(content, "utf-8")
         return path
 
-    async def write_delivery(
-        self, task_id: str, filename: str, content: bytes
-    ) -> Path:
+    async def write_delivery(self, task_id: str, filename: str, content: bytes) -> Path:
         """Write a delivery file into the workspace delivery/ directory."""
         ws = await self.load_workspace(task_id)
         if ws is None:
@@ -453,12 +462,8 @@ class ArtifactManager:
         meta_path = root / "meta.json"
         temp_path = root / "meta.json.tmp"
         try:
-            temp_path.write_text(
-                json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), "utf-8"
-            )
+            temp_path.write_text(json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), "utf-8")
             temp_path.replace(meta_path)
         except OSError:
             # Fallback to direct write if atomic replace fails
-            meta_path.write_text(
-                json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), "utf-8"
-            )
+            meta_path.write_text(json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), "utf-8")

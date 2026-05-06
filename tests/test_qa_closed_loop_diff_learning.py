@@ -6,11 +6,10 @@ Tests that Diff-Learning captures user edit feedback and evolves preferences:
 3. PREFERENCES.md is updated with learned preferences
 """
 
-import pytest
 import tempfile
-import asyncio
-import os
 from pathlib import Path
+
+import pytest
 
 from hermes_os.qa_closed_loop import (
     ContentArtifact,
@@ -28,6 +27,7 @@ class TestDiffLearning:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.fixture
@@ -35,6 +35,7 @@ class TestDiffLearning:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -180,6 +181,7 @@ class TestDiffLearningPatternMatching:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio

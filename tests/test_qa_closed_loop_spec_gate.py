@@ -7,19 +7,17 @@ Tests that:
 4. Spec is stored at the same level as the artifact
 """
 
-import pytest
 import tempfile
-import json
-import os
 from pathlib import Path
 
+import pytest
+
 from hermes_os.qa_closed_loop import (
-    SpecGate,
-    SpecValidator,
-    Spec,
     ContentArtifact,
-    QualityGates,
+    Spec,
+    SpecGate,
     SpecNotApprovedError,
+    SpecValidator,
 )
 
 
@@ -31,6 +29,7 @@ class TestSpecGate:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -105,6 +104,7 @@ class TestContentArtifact:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio

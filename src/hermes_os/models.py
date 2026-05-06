@@ -60,6 +60,4 @@ class Session:
 
     def get_history_for_agent(self) -> list[dict]:
         """Return history in a format suitable for the agent."""
-        return [
-            {"role": m.role, "content": m.content} for m in self.conversation_history
-        ]
+        return [{"role": m.role, "content": m.content} for m in self.conversation_history]

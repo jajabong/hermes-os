@@ -6,18 +6,15 @@ Tests that CheckerLabor performs adversarial verification with:
 3. ContentLabor integration (runs after ContentLabor, before Delivery)
 """
 
-import pytest
 import tempfile
-import asyncio
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from hermes_os.qa_closed_loop import (
+    CheckerLabor,
     ContentArtifact,
     Spec,
     SpecValidator,
-    CheckerLabor,
-    QualityGates,
 )
 
 
@@ -29,6 +26,7 @@ class TestCheckerLabor:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -165,6 +163,7 @@ class TestCheckerLaborCitationCount:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -200,6 +199,7 @@ class TestCheckerLaborSemanticBlindCheck:
         path = tempfile.mkdtemp()
         yield path
         import shutil
+
         shutil.rmtree(path, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -217,4 +217,6 @@ class TestCheckerLaborSemanticBlindCheck:
         result = await checker._semantic_blind_check(content)
         # Should flag potentially hallucinated claim
         assert isinstance(result, dict)
-        assert "passed" in result or "errors" in result or result.get("hallucination_score", 1.0) < 0.8
+        assert (
+            "passed" in result or "errors" in result or result.get("hallucination_score", 1.0) < 0.8
+        )

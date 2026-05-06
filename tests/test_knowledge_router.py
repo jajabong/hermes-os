@@ -105,9 +105,7 @@ class TestSearchResultFormat:
     @pytest.mark.asyncio
     async def test_search_result_contains_required_fields(self, kb: KnowledgeRouter) -> None:
         """Each result dict has doc_id, title, content."""
-        await kb.add_document(
-            doc_id="fmt", team="x", title="My Title", content="The body content."
-        )
+        await kb.add_document(doc_id="fmt", team="x", title="My Title", content="The body content.")
         results = await kb.search("title", team="x")
         assert len(results) >= 1
         r = results[0]
@@ -119,9 +117,7 @@ class TestSearchResultFormat:
     async def test_search_result_content_is_snippet(self, kb: KnowledgeRouter) -> None:
         """Returned content is a readable snippet, not raw FTS data."""
         long_content = "This is a long document " * 50
-        await kb.add_document(
-            doc_id="long", team="x", title="Long Doc", content=long_content
-        )
+        await kb.add_document(doc_id="long", team="x", title="Long Doc", content=long_content)
         results = await kb.search("long document", team="x")
         assert len(results) >= 1
         assert len(results[0]["content"]) <= 300

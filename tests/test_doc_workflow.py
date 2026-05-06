@@ -1,14 +1,12 @@
 """Tests for DocWorkflow — government document (政务公文) rendering."""
 
-import pytest
 from hermes_os.doc_workflow import (
-    DocType,
     ApprovalFlow,
+    DocType,
     DocWorkflowEngine,
-    DocWorkflowResult,
+    apply_terminology,
     get_template,
     render_document,
-    apply_terminology,
 )
 
 

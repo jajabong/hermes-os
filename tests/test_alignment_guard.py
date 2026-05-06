@@ -6,19 +6,21 @@ Three drift levels:
 - HIGH: lock context, wait for human (sim < 0.4)
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from hermes_os.chief_agent import ChiefAgent, Intent, ParsedIntent
+import pytest
 
+from hermes_os.chief_agent import ChiefAgent
 
 # ---------------------------------------------------------------------------
 # DriftLevel enum and AlignmentResult
 # ---------------------------------------------------------------------------
 
+
 class TestDriftLevel:
     def test_drift_level_enum_values(self) -> None:
         from hermes_os.chief_agent import DriftLevel
+
         assert hasattr(DriftLevel, "LOW")
         assert hasattr(DriftLevel, "MEDIUM")
         assert hasattr(DriftLevel, "HIGH")
@@ -27,6 +29,7 @@ class TestDriftLevel:
 class TestAlignmentResult:
     def test_alignment_result_dataclass_fields(self) -> None:
         from hermes_os.chief_agent import AlignmentResult
+
         result = AlignmentResult(
             drift_level="LOW",
             similarity=0.85,
@@ -43,6 +46,7 @@ class TestAlignmentResult:
 # ---------------------------------------------------------------------------
 # AlignmentGuard integration
 # ---------------------------------------------------------------------------
+
 
 class TestAlignmentGuardCheck:
     @pytest.fixture
@@ -144,6 +148,7 @@ class TestAlignmentGuardCheck:
 # North Star Injection in parse_intent
 # ---------------------------------------------------------------------------
 
+
 class TestNorthStarInjection:
     @pytest.fixture
     def chief(self) -> ChiefAgent:
@@ -154,10 +159,7 @@ class TestNorthStarInjection:
         """Goal context must be injected into parse_intent as highest priority."""
         mock_tracker = AsyncMock()
         mock_tracker.get_active_goal_context.return_value = (
-            "Goal: 完成供应商对比分析\n"
-            "Phase 2/5: plan\n"
-            "Pattern: research_to_deploy\n"
-            "Progress: 40%"
+            "Goal: 完成供应商对比分析\nPhase 2/5: plan\nPattern: research_to_deploy\nProgress: 40%"
         )
 
         with patch("hermes_os.chief_agent.invoke", new_callable=AsyncMock) as mock_invoke:

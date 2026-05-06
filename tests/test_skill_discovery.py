@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from hermes_os.skill_discovery import SkillDiscovery
@@ -17,6 +17,7 @@ def discovery() -> SkillDiscovery:
 # ---------------------------------------------------------------------------
 # record_usage tests
 # ---------------------------------------------------------------------------
+
 
 class TestRecordUsage:
     """Tests for record_usage() tracking."""
@@ -67,6 +68,7 @@ class TestRecordUsage:
 # make_solidify_decision tests
 # ---------------------------------------------------------------------------
 
+
 class TestSolidifyDecision:
     """Tests for make_solidify_decision() — the solidify/discard/keep logic."""
 
@@ -90,7 +92,9 @@ class TestSolidifyDecision:
         assert decision == "discard"
 
     @pytest.mark.asyncio
-    async def test_decision_keep_transient_insufficient_data(self, discovery: SkillDiscovery) -> None:
+    async def test_decision_keep_transient_insufficient_data(
+        self, discovery: SkillDiscovery
+    ) -> None:
         """uses < 2 or 0.5 <= success_rate < 0.8 → keep_transient."""
         # only 1 use — not enough for any decision
         await discovery.record_usage("new-skill", success=True)
@@ -118,6 +122,7 @@ class TestSolidifyDecision:
 # run_solidify_cycle tests
 # ---------------------------------------------------------------------------
 
+
 class TestSolidifyCycle:
     """Tests for run_solidify_cycle() periodic review."""
 
@@ -138,8 +143,11 @@ class TestSolidifyCycle:
         assert "keep_transient" in result
 
     # ---------------------------------------------------------------------------
+
+
 # Integration test: record_usage → solidify cycle feedback loop
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_solidify_decision_after_successes() -> None:
@@ -156,7 +164,18 @@ async def test_solidify_decision_after_successes() -> None:
         (repo, path, name, description, stars, url, content, quality_score, discovered_at, solidified)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        ("test-repo", "/test/SKILL.md", "integration-skill", "desc", 50, "https://github.com/test", "", 0.5, now, 0),
+        (
+            "test-repo",
+            "/test/SKILL.md",
+            "integration-skill",
+            "desc",
+            50,
+            "https://github.com/test",
+            "",
+            0.5,
+            now,
+            0,
+        ),
     )
     await db.commit()
 
@@ -187,7 +206,18 @@ async def test_solidify_decision_after_failures() -> None:
         (repo, path, name, description, stars, url, content, quality_score, discovered_at, solidified)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        ("discard-repo", "/discard/SKILL.md", "discard-skill", "desc", 10, "https://github.com/test", "", 0.3, now, 0),
+        (
+            "discard-repo",
+            "/discard/SKILL.md",
+            "discard-skill",
+            "desc",
+            10,
+            "https://github.com/test",
+            "",
+            0.3,
+            now,
+            0,
+        ),
     )
     await db.commit()
 
@@ -208,6 +238,7 @@ async def test_solidify_decision_after_failures() -> None:
 # record_usage_from_task — automatic feedback from TaskScheduler
 # ---------------------------------------------------------------------------
 
+
 class TestRecordUsageFromTask:
     """Tests for automatic skill_name extraction from task metadata."""
 
@@ -220,7 +251,9 @@ class TestRecordUsageFromTask:
         assert eff["uses"] == 1
 
     @pytest.mark.asyncio
-    async def test_record_usage_empty_skill_name_still_works(self, discovery: SkillDiscovery) -> None:
+    async def test_record_usage_empty_skill_name_still_works(
+        self, discovery: SkillDiscovery
+    ) -> None:
         """record_usage with empty skill_name is silently ignored (no DB entry)."""
         # Empty string skill should not raise
         await discovery.record_usage("", success=True)

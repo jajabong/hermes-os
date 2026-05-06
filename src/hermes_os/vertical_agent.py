@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +18,8 @@ class AgentRequest:
     """A request dispatched to a VerticalAgent."""
 
     intent: str  # e.g. "code", "research", "deploy"
-    params: Dict[str, Any]  # action-specific parameters
-    context: Dict[str, Any]  # shared context: user_id, team, session_id, ...
+    params: dict[str, Any]  # action-specific parameters
+    context: dict[str, Any]  # shared context: user_id, team, session_id, ...
 
 
 @dataclass
@@ -30,7 +30,7 @@ class AgentResult:
     output: str = ""
     token_usage: int = 0
     error: str | None = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @runtime_checkable
@@ -41,7 +41,7 @@ class VerticalAgent(Protocol):
     must implement this protocol.
     """
 
-    async def invoke(self, request: AgentRequest, context: Dict[str, Any]) -> AgentResult:
+    async def invoke(self, request: AgentRequest, context: dict[str, Any]) -> AgentResult:
         """Execute the agent's task and return a result."""
         ...
 
@@ -50,7 +50,7 @@ class AgentRegistry:
     """Registry for VerticalAgent implementations. Mirrors LaborRegistry pattern."""
 
     def __init__(self) -> None:
-        self._agents: Dict[str, type[VerticalAgent]] = {}
+        self._agents: dict[str, type[VerticalAgent]] = {}
 
     def register(self, name: str, agent_class: type[VerticalAgent]) -> None:
         """Register an agent class with a unique name."""

@@ -13,15 +13,15 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
 from hermes_os.conclusion_extractor import (
     ConclusionExtractor,
-    ConclusionCard,
     ConclusionLevel,
+)
+from hermes_os.conclusion_extractor import (
     ConclusionLevel as Level,
 )
 
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 class NotificationEvent(str, Enum):
     """通知事件类型，对应不同的图标和卡片模板。"""
+
     STARTED = "started"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -64,9 +65,10 @@ class NotificationEvent(str, Enum):
 @dataclass
 class SendThresholds:
     """Heads-up 发送阈值配置。"""
+
     heads_up_progress_threshold: float = 0.5  # 超过预估时间 50% 时触发
-    min_elapsed_seconds: int = 60              # 至少运行 60 秒才发 heads-up
-    warning_progress_threshold: float = 0.8   # 超过 80% 时发送警告
+    min_elapsed_seconds: int = 60  # 至少运行 60 秒才发 heads-up
+    warning_progress_threshold: float = 0.8  # 超过 80% 时发送警告
 
 
 _SEND_THRESHOLDS = SendThresholds()

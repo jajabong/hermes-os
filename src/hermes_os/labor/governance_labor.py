@@ -72,11 +72,13 @@ class GovernanceLabor:
 
             # Save detection record
             record_file = wiki_dir / "detection_record.json"
-            record_file.write_text(json.dumps(detection_result, ensure_ascii=False, indent=2), encoding="utf-8")
+            record_file.write_text(
+                json.dumps(detection_result, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M1_DETECTION failed")
             return False
 
@@ -108,7 +110,7 @@ class GovernanceLabor:
             logger.info("M2_SANITIZE: sanitized %d files", sanitized_count)
             return sanitized_count > 0
 
-        except Exception as e:
+        except Exception:
             logger.exception("M2_SANITIZE failed")
             return False
 
@@ -143,12 +145,14 @@ class GovernanceLabor:
                 "timestamp": meta.get("timestamp", "now"),
             }
             record_file = global_wiki_dir / "promotion_record.json"
-            record_file.write_text(json.dumps(promotion_record, ensure_ascii=False, indent=2), encoding="utf-8")
+            record_file.write_text(
+                json.dumps(promotion_record, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
             logger.info("M3_PROMOTION: promoted %d entries", promoted)
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M3_PROMOTION failed")
             return False
 
@@ -181,20 +185,20 @@ class GovernanceLabor:
             logger.info("M4_SYNC: indexed %d entries", len(all_entries))
             return True
 
-        except Exception as e:
+        except Exception:
             logger.exception("M4_SYNC failed")
             return False
 
     def _redact_pii(self, content: str) -> str:
         """Redact PII from content."""
         # Redact email addresses
-        content = re.sub(r'[\w.-]+@[\w.-]+\.\w+', '[EMAIL_REDACTED]', content)
+        content = re.sub(r"[\w.-]+@[\w.-]+\.\w+", "[EMAIL_REDACTED]", content)
         # Redact phone numbers
-        content = re.sub(r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b', '[PHONE_REDACTED]', content)
+        content = re.sub(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b", "[PHONE_REDACTED]", content)
         # Redact potential ID numbers
-        content = re.sub(r'\b\d{10,}\b', '[ID_REDACTED]', content)
+        content = re.sub(r"\b\d{10,}\b", "[ID_REDACTED]", content)
         # Redact names (simple pattern)
-        content = re.sub(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b', '[NAME_REDACTED]', content)
+        content = re.sub(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b", "[NAME_REDACTED]", content)
 
         return content
 

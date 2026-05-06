@@ -1,13 +1,12 @@
 """Tests for EmotionEngine — lightweight emotion detection and personality tuning."""
 
-import pytest
-from hermes_os.emotion_engine import EmotionEngine, EmotionState, ToneConfig
+from hermes_os.emotion_engine import EmotionEngine, EmotionState
 from hermes_os.personality_tuner import PersonalityTuner, TonePreference
-
 
 # ---------------------------------------------------------------------------
 # EmotionEngine tests
 # ---------------------------------------------------------------------------
+
 
 class TestEmotionEngineDetect:
     """EmotionEngine.detect() tests."""
@@ -17,32 +16,32 @@ class TestEmotionEngineDetect:
         engine = EmotionEngine()
         for msg in ["太棒了！", "谢谢，太厉害了", "完美，就这样做"]:
             result = engine.detect(msg)
-            assert result in (EmotionState.POSITIVE, EmotionState.NEUTRAL), \
+            assert result in (EmotionState.POSITIVE, EmotionState.NEUTRAL), (
                 f"Expected POSITIVE/NEUTRAL for '{msg}', got {result}"
+            )
 
     def test_detect_stress_signals(self) -> None:
         """Phrases with stress signals detect as STRESSED."""
         engine = EmotionEngine()
         for msg in ["太忙了，来不及", "没时间了", "急死了"]:
             result = engine.detect(msg)
-            assert result == EmotionState.STRESSED, \
-                f"Expected STRESSED for '{msg}', got {result}"
+            assert result == EmotionState.STRESSED, f"Expected STRESSED for '{msg}', got {result}"
 
     def test_detect_frustration_signals(self) -> None:
         """Phrases with frustration detect as FRUSTRATED."""
         engine = EmotionEngine()
         for msg in ["烦死了，这个bug修不好", "太难了，怎么都不行", "失败了很多次"]:
             result = engine.detect(msg)
-            assert result in (EmotionState.FRUSTRATED, EmotionState.STRESSED), \
+            assert result in (EmotionState.FRUSTRATED, EmotionState.STRESSED), (
                 f"Expected FRUSTRATED/STRESSED for '{msg}', got {result}"
+            )
 
     def test_detect_neutral(self) -> None:
         """Normal statements detect as NEUTRAL."""
         engine = EmotionEngine()
         for msg in ["今天天气不错", "帮我查一下项目状态", "这个任务完成了"]:
             result = engine.detect(msg)
-            assert result == EmotionState.NEUTRAL, \
-                f"Expected NEUTRAL for '{msg}', got {result}"
+            assert result == EmotionState.NEUTRAL, f"Expected NEUTRAL for '{msg}', got {result}"
 
     def test_detect_frequency_boosts_stress(self) -> None:
         """Multiple stress signals in short time boost to STRESSED."""
@@ -79,7 +78,12 @@ class TestEmotionEngineToneConfig:
         """POSITIVE tone config adds celebratory emoji."""
         tone = EmotionEngine().get_tone_adjustment(EmotionState.POSITIVE)
         assert tone.emoji_prefix != ""
-        assert "👍" in tone.emoji_prefix or "✨" in tone.emoji_prefix or "🎉" in tone.emoji_prefix or "🎉 " in tone.emoji_prefix
+        assert (
+            "👍" in tone.emoji_prefix
+            or "✨" in tone.emoji_prefix
+            or "🎉" in tone.emoji_prefix
+            or "🎉 " in tone.emoji_prefix
+        )
 
     def test_frustrated_tone_encouraging(self) -> None:
         """FRUSTRATED tone config is encouraging, not dismissive."""
@@ -90,6 +94,7 @@ class TestEmotionEngineToneConfig:
 # ---------------------------------------------------------------------------
 # PersonalityTuner tests
 # ---------------------------------------------------------------------------
+
 
 class TestPersonalityTunerFormat:
     """PersonalityTuner message formatting."""
@@ -118,7 +123,9 @@ class TestPersonalityTunerFormat:
     def test_stressed_emotion_shortens_message(self) -> None:
         """STRESSED emotion makes tuner produce shorter message."""
         tuner = PersonalityTuner()
-        long_msg = "项目进展正常，3个任务进行中，2个已完成后请查收飞书文档了解详情，另有1个新任务需要关注"
+        long_msg = (
+            "项目进展正常，3个任务进行中，2个已完成后请查收飞书文档了解详情，另有1个新任务需要关注"
+        )
         result = tuner.format_notification(
             base_message=long_msg,
             emotion=EmotionState.STRESSED,
@@ -161,6 +168,7 @@ class TestPersonalityTunerFormat:
 # ---------------------------------------------------------------------------
 # EmotionState enum tests
 # ---------------------------------------------------------------------------
+
 
 class TestEmotionState:
     def test_emotion_states(self) -> None:

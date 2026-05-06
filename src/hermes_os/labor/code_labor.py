@@ -9,9 +9,8 @@ Implements the Engineering Pipeline stages:
 
 from __future__ import annotations
 
-import logging
 import asyncio
-import subprocess
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +56,9 @@ class CodeLabor:
     ) -> bool:
         """M1_SPEC: Generate modification specification from task description."""
         spec_path = meta.get("spec_path", workspace / "src" / "spec.md")
-        spec_content = Path(spec_path).read_text(encoding="utf-8") if Path(spec_path).exists() else ""
+        spec_content = (
+            Path(spec_path).read_text(encoding="utf-8") if Path(spec_path).exists() else ""
+        )
 
         prompt = f"""
 ## Task: Generate Modification Specification
@@ -95,7 +96,7 @@ Output ONLY the specification, no additional explanation.
             else:
                 logger.error("M1_SPEC failed: %s", result.stderr)
                 return False
-        except Exception as e:
+        except Exception:
             logger.exception("M1_SPEC exception")
             return False
 
@@ -104,7 +105,9 @@ Output ONLY the specification, no additional explanation.
     ) -> bool:
         """M2_CODING: Write code based on modification spec."""
         spec_file = workspace / "src" / "modification_spec.md"
-        spec_content = spec_file.read_text(encoding="utf-8") if spec_file.exists() else task_description
+        spec_content = (
+            spec_file.read_text(encoding="utf-8") if spec_file.exists() else task_description
+        )
 
         # Determine output file from spec or use default
         output_file = workspace / "src" / "generated.py"
@@ -141,7 +144,7 @@ Output ONLY the specification, no additional explanation.
             else:
                 logger.error("M2_CODING failed: %s", result.stderr)
                 return False
-        except Exception as e:
+        except Exception:
             logger.exception("M2_CODING exception")
             return False
 
@@ -171,7 +174,7 @@ Output ONLY the specification, no additional explanation.
             output_file.write_text(output, encoding="utf-8")
 
             return passed
-        except Exception as e:
+        except Exception:
             logger.exception("M3_SELFTEST exception")
             return False
 
@@ -202,7 +205,7 @@ Output ONLY the specification, no additional explanation.
             output_file.write_text(output, encoding="utf-8")
 
             return passed
-        except Exception as e:
+        except Exception:
             logger.exception("M4_LINTING exception")
             return False
 
