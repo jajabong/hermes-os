@@ -58,13 +58,23 @@ class AgentRegistry:
         logger.debug("Registered agent: %s", name)
 
     def get_agent(self, name: str, **kwargs: Any) -> VerticalAgent:
-        """Resolve an agent name to an instance, injecting dependencies via kwargs."""
-        agent_class = self._agents.get(name)
-        if not agent_class:
+        """Resolve an agent name to an instance, injecting dependencies via kwargs.
+
+        If a class was registered, instantiates with kwargs.
+        If an instance was registered, returns it directly (for complex agents
+        that need constructor args or stateful initialization).
+        """
+        agent_cls_or_instance = self._agents.get(name)
+        if not agent_cls_or_instance:
             raise ValueError(f"Agent '{name}' not found in registry.")
 
+        # If it's already an instance (not a type), return directly
+        if not isinstance(agent_cls_or_instance, type):
+            return agent_cls_or_instance
+
+        # Otherwise it's a class — instantiate with kwargs
         try:
-            return agent_class(**kwargs)  # type: ignore
+            return agent_cls_or_instance(**kwargs)  # type: ignore
         except TypeError as e:
             logger.error("Failed to instantiate agent %s: %s", name, e)
             raise
