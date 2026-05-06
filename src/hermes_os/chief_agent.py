@@ -10,39 +10,35 @@ Responsibilities:
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 from hermes_os.claude_code_invocator import (
-    DEFAULT_MAX_TURNS,
-    DEFAULT_TIMEOUT_SEC,
     invoke,
 )
-from hermes_os.models import User
+from hermes_os.goal_tracker import EvolutionEntry, GoalTracker
 from hermes_os.org_context import (
     ORG_IDENTITY,
     ROLE_DEFINITIONS,
-    Role,
+    _build_org_preamble,
     build_org_context,
     get_role_for_intent,
-    _build_org_preamble,
 )
 from hermes_os.task_scheduler import TaskPriority, TaskScheduler
-from hermes_os.goal_tracker import GoalTracker, GoalPattern, EvolutionEntry
 
 
 class DriftLevel(str, Enum):
     """Semantic drift severity levels from active goal."""
-    LOW = "LOW"      # < 0.7 similarity — auto-approve
+
+    LOW = "LOW"  # < 0.7 similarity — auto-approve
     MEDIUM = "MEDIUM"  # 0.4-0.7 — confirmation required
-    HIGH = "HIGH"    # < 0.4 — lock context, wait for human
+    HIGH = "HIGH"  # < 0.4 — lock context, wait for human
 
 
 @dataclass
 class AlignmentResult:
     """Result of alignment check between user intent and active goal."""
+
     drift_level: DriftLevel
     similarity: float
     active_goal_description: str
@@ -279,7 +275,9 @@ class ChiefAgent:
             # Fallback: rule-based parsing (context not used in rule-based mode)
             return self._rule_based_parse(message, context_parts)
 
-    def _rule_based_parse(self, message: str, context_parts: list[str] | None = None) -> ParsedIntent:
+    def _rule_based_parse(
+        self, message: str, context_parts: list[str] | None = None
+    ) -> ParsedIntent:
         """Simple rule-based fallback when LLM parsing fails.
 
         Args:
@@ -310,7 +308,9 @@ class ChiefAgent:
         elif any(k in msg_lower for k in ["write code", "implement", "add feature"]):
             action = Intent.CODE
             confidence = 0.6
-        elif any(k in msg_lower for k in ["写一本", "写本书", "创作书籍", "写一本关于", "book pipeline"]):
+        elif any(
+            k in msg_lower for k in ["写一本", "写本书", "创作书籍", "写一本关于", "book pipeline"]
+        ):
             action = Intent.WRITE_BOOK
             confidence = 0.8
         else:
@@ -436,7 +436,9 @@ class ChiefAgent:
             goal_context_for_task = ""
             if self._goal_tracker:
                 try:
-                    goal_context_for_task = await self._goal_tracker.get_active_goal_context(user_id)
+                    goal_context_for_task = await self._goal_tracker.get_active_goal_context(
+                        user_id
+                    )
                 except Exception:
                     pass
 
@@ -450,13 +452,17 @@ class ChiefAgent:
                     "role": "book_author",
                     "goal_context": goal_context_for_task,
                     "raw_request": intent.raw_text,
+                    # High-confidence intents auto-execute without user confirmation
+                    "skip_confirmation": intent.confidence >= 0.85,
                 },
             )
 
             # Advance goal phase after creating tasks
             if self._goal_tracker and tasks:
                 try:
-                    await self._goal_tracker.advance_phase(user_id, next_phase=Intent.WRITE_BOOK.value)
+                    await self._goal_tracker.advance_phase(
+                        user_id, next_phase=Intent.WRITE_BOOK.value
+                    )
                 except Exception:
                     pass
 
@@ -494,6 +500,8 @@ class ChiefAgent:
                 "org_identity": ORG_IDENTITY,
                 "role_definition": ROLE_DEFINITIONS[role],
                 "goal_context": goal_context_for_task,
+                # High-confidence intents auto-execute without user confirmation
+                "skip_confirmation": intent.confidence >= 0.85,
             },
         )
 
@@ -538,8 +546,7 @@ class ChiefAgent:
             for task in blocked_tasks:
                 dep_ids = ", ".join(task.depends_on[:2])
                 suggestions.append(
-                    f"Task '{task.title}' is blocked by: {dep_ids}. "
-                    f"Resolve the dependencies first."
+                    f"Task '{task.title}' is blocked by: {dep_ids}. Resolve the dependencies first."
                 )
 
             # Check long-running tasks → suggest follow-up

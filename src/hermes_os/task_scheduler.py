@@ -28,15 +28,13 @@ from hermes_os.claude_code_invocator import (
     InvocationError,
     invoke,
 )
-from hermes_os.org_context import build_team_context
-from hermes_os.skill_loader import SkillLoader
-from hermes_os.skill_discovery import SkillDiscovery, CapabilityGap
-from hermes_os.org_memory import OrgMemory
-from hermes_os.feishu_enhancer import FeishuEnhancer
-from hermes_os.conversation_state import ConversationStateManager, ConversationState
+from hermes_os.conversation_state import ConversationStateManager
+from hermes_os.event_loop import Event, EventType, get_event_bus
 from hermes_os.jarvis_interface import JarvisInterface
-from hermes_os.event_loop import get_event_bus, Event, EventType
-
+from hermes_os.org_context import build_team_context
+from hermes_os.org_memory import OrgMemory
+from hermes_os.skill_discovery import CapabilityGap, SkillDiscovery
+from hermes_os.skill_loader import SkillLoader
 
 # Default org identity injected when no other context is available
 DEFAULT_ORG_IDENTITY = (
@@ -148,7 +146,12 @@ class TaskScheduler:
     - Manual trigger (user or external event)
     """
 
-    def __init__(self, db_path: str = "hermes_os.db", org_memory: OrgMemory | None = None, conversation_state_manager: ConversationStateManager | None = None) -> None:
+    def __init__(
+        self,
+        db_path: str = "hermes_os.db",
+        org_memory: OrgMemory | None = None,
+        conversation_state_manager: ConversationStateManager | None = None,
+    ) -> None:
         self.db_path = db_path
         self._db: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
@@ -200,12 +203,8 @@ class TaskScheduler:
                 metadata TEXT DEFAULT '{}'
             )
         """)
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id)"
-        )
-        await db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)"
-        )
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
         await db.commit()
 
     # -------------------------------------------------------------------------
@@ -251,9 +250,7 @@ class TaskScheduler:
         """Load a single task by ID."""
         await self._lazy_init()
         db = await self._get_db()
-        async with db.execute(
-            "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
-        ) as cursor:
+        async with db.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)) as cursor:
             row = await cursor.fetchone()
             return Task.from_row(dict(row)) if row else None
 
@@ -280,9 +277,7 @@ class TaskScheduler:
         """Return ALL tasks across all users and all statuses."""
         await self._lazy_init()
         db = await self._get_db()
-        async with db.execute(
-            "SELECT * FROM tasks ORDER BY created_at DESC"
-        ) as cursor:
+        async with db.execute("SELECT * FROM tasks ORDER BY created_at DESC") as cursor:
             rows = await cursor.fetchall()
         return [Task.from_row(dict(row)) for row in rows]
 
@@ -327,14 +322,145 @@ class TaskScheduler:
             )
             await db.commit()
 
+        # After status change, update DAG progress and notify if needed
+        if status == TaskStatus.COMPLETED:
+            await self._on_task_completed(task_id)
+
+    async def _on_task_completed(self, task_id: str) -> None:
+        """Handle task completion: update DAG parent progress and notify user."""
+        task = await self.get_task(task_id)
+        if not task:
+            return
+
+        dag_id = task.metadata.get("dag_id")
+        if not dag_id:
+            return
+
+        # Find DAG parent and update progress
+        await self._update_dag_progress(dag_id)
+
+        # Send progress notification if DAG has notify_target
+        dag_parent = await self._find_dag_parent(dag_id)
+        if dag_parent:
+            await self._send_dag_progress_notification(dag_parent, task)
+
+    async def _update_dag_progress(self, dag_id: str) -> None:
+        """Update DAG parent completion count based on completed children."""
+        dag_parent = await self._find_dag_parent(dag_id)
+        if not dag_parent:
+            return
+
+        total_steps = dag_parent.metadata.get("dag_total_steps", 0)
+        if total_steps == 0:
+            return
+
+        # Count completed subtasks for this dag_id
+        all_tasks = await self.get_tasks_for_user(dag_parent.user_id)
+        completed_count = sum(
+            1
+            for t in all_tasks
+            if t.metadata.get("dag_id") == dag_id
+            and t.status == TaskStatus.COMPLETED
+            and not t.metadata.get("is_dag_parent")
+        )
+
+        # Update parent metadata
+        dag_parent.metadata["dag_completed_steps"] = completed_count
+        await self._save_task_metadata(dag_parent.task_id, dag_parent.metadata)
+
+    async def _find_dag_parent(self, dag_id: str) -> Task | None:
+        """Find the DAG parent task for a given dag_id."""
+        all_tasks = await self.get_all_tasks()
+        for t in all_tasks:
+            if t.metadata.get("dag_id") == dag_id and t.metadata.get("is_dag_parent"):
+                return t
+        return None
+
+    async def _save_task_metadata(self, task_id: str, metadata: dict) -> None:
+        """Save metadata dict to a task (used for DAG progress updates)."""
+        await self._lazy_init()
+        db = await self._get_db()
+        # Use str() to match Python dict syntax used by Task.to_dict/from_row
+        await db.execute(
+            "UPDATE tasks SET metadata = ?, updated_at = ? WHERE task_id = ?",
+            (str(metadata), datetime.now(UTC).isoformat(), task_id),
+        )
+        await db.commit()
+
+    async def get_dag_status(self, dag_id: str) -> dict | None:
+        """Return structured DAG status: completion %, next step, is_complete."""
+        dag_parent = await self._find_dag_parent(dag_id)
+        if not dag_parent:
+            return None
+
+        total = dag_parent.metadata.get("dag_total_steps", 0)
+        completed = dag_parent.metadata.get("dag_completed_steps", 0)
+        pct = int(100 * completed / total) if total > 0 else 0
+
+        # Find next pending subtask
+        all_tasks = await self.get_tasks_for_user(dag_parent.user_id)
+        pending_steps = [
+            t
+            for t in all_tasks
+            if t.metadata.get("dag_id") == dag_id
+            and not t.metadata.get("is_dag_parent")
+            and t.status == TaskStatus.PENDING
+        ]
+        next_step = pending_steps[0].task_id if pending_steps else None
+
+        return {
+            "dag_id": dag_id,
+            "parent_task_id": dag_parent.task_id,
+            "total_steps": total,
+            "completed_steps": completed,
+            "completion_pct": pct,
+            "next_step": next_step,
+            "is_complete": completed >= total and total > 0,
+        }
+
+    async def _send_dag_progress_notification(self, dag_parent: Task, completed_step: Task) -> None:
+        """Send progress notification to user after a subtask completes."""
+        notify_target = dag_parent.metadata.get("notify_target")
+        if not notify_target or notify_target.get("type") != "feishu":
+            return
+
+        open_id = notify_target.get("open_id")
+        if not open_id:
+            return
+
+        dag_id = dag_parent.metadata.get("dag_id")
+        total = dag_parent.metadata.get("dag_total_steps", 0)
+        completed = dag_parent.metadata.get("dag_completed_steps", 0)
+        pct = int(100 * completed / total) if total > 0 else 0
+
+        title = f"🎯 DAG进度: {dag_parent.title}"
+        content = (
+            f"**完成**: {completed_step.title}\n"
+            f"**进度**: {completed}/{total} ({pct}%)\n"
+            f"**状态**: {'已完成！' if completed >= total else '进行中'}"
+        )
+        nl_summary = (
+            f"DAG '{dag_parent.title}' step {completed}/{total} completed: {completed_step.title}"
+        )
+
+        try:
+            await self.jarvis.send_card_with_nl(
+                user_id=open_id,
+                title=title,
+                content=content,
+                actions=[],
+                nl_summary=nl_summary,
+                task_id=dag_parent.task_id,
+            )
+        except Exception:
+            pass  # Never block on notification failure
+
     async def delete_task(self, task_id: str) -> bool:
         """Delete a task. Returns True if deleted."""
         await self._lazy_init()
         async with self._lock:
             db = await self._get_db()
-            cursor = await db.execute(
-                "DELETE FROM tasks WHERE task_id = ?", (task_id,)
-            )
+            cursor = await db.execute("DELETE FROM tasks WHERE task_id = ?", (task_id,))
             await db.commit()
             return cursor.rowcount > 0
 
@@ -345,11 +471,44 @@ class TaskScheduler:
     def _extract_gap_keywords(self, text: str) -> list[str]:
         """Extract significant keywords that might indicate a skill gap."""
         common = {
-            "agent", "task", "skill", "code", "review", "test", "build",
-            "deploy", "debug", "api", "web", "data", "search", "learn",
-            "write", "edit", "run", "file", "hermes", "os", "the", "and",
-            "for", "with", "from", "this", "that", "have", "been", "will",
-            "are", "was", "not", "but", "what", "when", "where", "how",
+            "agent",
+            "task",
+            "skill",
+            "code",
+            "review",
+            "test",
+            "build",
+            "deploy",
+            "debug",
+            "api",
+            "web",
+            "data",
+            "search",
+            "learn",
+            "write",
+            "edit",
+            "run",
+            "file",
+            "hermes",
+            "os",
+            "the",
+            "and",
+            "for",
+            "with",
+            "from",
+            "this",
+            "that",
+            "have",
+            "been",
+            "will",
+            "are",
+            "was",
+            "not",
+            "but",
+            "what",
+            "when",
+            "where",
+            "how",
         }
         words = re.findall(r"[a-zA-Z]{4,}", text.lower())
         return [w for w in words if w not in common][:5]
@@ -360,7 +519,7 @@ class TaskScheduler:
 
     async def retry_task(self, task_id: str) -> bool:
         """Manually retry a failed task. Increments retry_count and re-queues as PENDING.
-        
+
         Returns True if retry was scheduled, False if task not found or not in FAILED state.
         """
         task = await self.get_task(task_id)
@@ -368,15 +527,17 @@ class TaskScheduler:
             return False
         if task.status != TaskStatus.FAILED:
             return False
-        
+
         retry_count = task.metadata.get("retry_count", 0)
         task.metadata["retry_count"] = retry_count + 1
+        await self._save_task_metadata(task.task_id, task.metadata)
         await self.update_task_status(
             task.task_id,
             TaskStatus.PENDING,
             error=None,  # clear previous error
         )
         import logging
+
         logger = logging.getLogger("hermes_os.scheduler")
         logger.info("Manually retrying task %s (attempt %d)", task.task_id, retry_count + 1)
         return True
@@ -457,7 +618,7 @@ class TaskScheduler:
 
     async def unblock_dependents(self, completed_task_id: str) -> list[Task]:
         """Find tasks that were blocked on a completed task and can now run.
-        
+
         Only unblocks tasks where ALL dependencies are COMPLETED.
         If a task has no dependencies but is blocked, it is also unblocked.
         """
@@ -472,7 +633,7 @@ class TaskScheduler:
         for task in blocked:
             if completed_task_id not in task.depends_on:
                 continue
-            
+
             # Re-check ALL dependencies — must ALL be COMPLETED
             all_dep_done = True
             for dep_id in task.depends_on:
@@ -480,7 +641,7 @@ class TaskScheduler:
                 if dep is None or dep.status != TaskStatus.COMPLETED:
                     all_dep_done = False
                     break
-            
+
             if all_dep_done:
                 await self.update_task_status(task.task_id, TaskStatus.PENDING)
                 newly_runnable.append(task)
@@ -521,17 +682,22 @@ class TaskScheduler:
 
     async def _process_pending_tasks(self) -> None:
         """Find and execute runnable tasks via ClaudeCodeInvoker."""
+        logger = logging.getLogger("hermes_os.scheduler")
         runnable = await self.get_runnable_tasks()
         for task in runnable:
             # Mark as running to prevent duplicate dispatch
             await self.update_task_status(task.task_id, TaskStatus.RUNNING)
 
             # Jarvis Mode: Send intent card and wait for confirmation event-driven
-            await self._send_intent_card(task)
-
-            # Event-driven wait: set AWAITING_CONFIRMATION and listen for user response
             user_id = task.metadata.get("notify_target", {}).get("open_id") or task.user_id
-            confirmed = await self._await_confirmation(user_id, task.task_id)
+
+            # Auto-execute if skip_confirmation is set (DAG tasks, high-confidence intents)
+            if task.metadata.get("skip_confirmation", False):
+                logger.info("Jarvis: Task %s auto-confirmed (skip_confirmation=True)", task.task_id)
+                confirmed = True
+            else:
+                await self._send_intent_card(task)
+                confirmed = await self._await_confirmation(user_id, task.task_id)
 
             if not confirmed:
                 # User intercepted or timed out
@@ -551,14 +717,14 @@ class TaskScheduler:
 
                 # Build full context: org identity + role + team context
                 team_context = await build_team_context(task, self)
-                
-                # Inject transient skills via SkillLoader
-                loader = SkillLoader()
-                skills_fragment = loader.get_all_prompt_fragments(max_skills=5)
-                
+
+                # Inject transient skills via SkillLoader (with effectiveness tracking)
+                loader = SkillLoader(skill_discovery=self._skill_discovery)
+                skills_fragment = loader.get_all_prompt_fragments(max_skills=5, record_usage=True)
+
                 # Inject relevant org memory
                 memory_fragment = self._org_memory.search_relevant_memory(task.description)
-                
+
                 # Compose full system prompt
                 parts = [base_system_prompt] if base_system_prompt else []
                 if team_context:
@@ -627,27 +793,28 @@ class TaskScheduler:
                     gap_type="failed_task",
                 )
                 if discovered:
-                    import logging
-                    logger = logging.getLogger("hermes_os.scheduler")
                     logger.info(
                         "Discovered %d solution skill(s) for failed task %s",
-                        len(discovered), task.task_id,
+                        len(discovered),
+                        task.task_id,
                     )
 
                 # Retry logic: if retry_count < 3, re-queue as PENDING
                 retry_count = task.metadata.get("retry_count", 0)
                 if retry_count < 3:
                     task.metadata["retry_count"] = retry_count + 1
+                    await self._save_task_metadata(task.task_id, task.metadata)
                     await self.update_task_status(
                         task.task_id,
                         TaskStatus.PENDING,  # re-queue instead of fail
                         error=f"Retry {retry_count + 1}/3: {str(e)[:500]}",
                     )
-                    import logging
-                    logger = logging.getLogger("hermes_os.scheduler")
                     logger.warning(
                         "Task %s failed (attempt %d/%d), re-queued: %s",
-                        task.task_id, retry_count + 1, 3, str(e)[:200],
+                        task.task_id,
+                        retry_count + 1,
+                        3,
+                        str(e)[:200],
                     )
                 else:
                     # Failure: mark failed with error (exceeded retries)
@@ -662,9 +829,7 @@ class TaskScheduler:
                     await self.unblock_dependents(task.task_id)
 
                     # Send notification if configured
-                    await self._send_notification(
-                        task, status="failed", error=error_msg
-                    )
+                    await self._send_notification(task, status="failed", error=error_msg)
 
     async def _send_notification(
         self,
@@ -674,18 +839,53 @@ class TaskScheduler:
         error: str | None = None,
     ) -> None:
         """Send notification if task has notify_target in metadata."""
-        # ... (existing implementation)
+        notify_target = task.metadata.get("notify_target")
+        if not notify_target or notify_target.get("type") != "feishu":
+            return
+
+        open_id = notify_target.get("open_id")
+        if not open_id:
+            return
+
+        if status == "completed":
+            title = f"✅ 任务完成: {task.title}"
+            content = f"任务已成功完成。\n\n**描述**: {task.description[:200]}"
+            if result:
+                content += f"\n\n**结果**: {result[:500]}"
+            nl_summary = f"Task completed: {task.title}"
+        elif status == "failed":
+            title = f"❌ 任务失败: {task.title}"
+            content = f"任务执行失败。\n\n**描述**: {task.description[:200]}"
+            if error:
+                content += f"\n\n**错误**: {error[:500]}"
+            nl_summary = f"Task failed: {task.title}"
+        else:
+            title = f"📋 任务状态更新: {task.title}"
+            content = f"任务状态: {status}"
+            nl_summary = f"Task status update: {task.title}"
+
+        try:
+            await self.jarvis.send_card_with_nl(
+                user_id=open_id,
+                title=title,
+                content=content,
+                actions=[],
+                nl_summary=nl_summary,
+                task_id=task.task_id,
+            )
+        except Exception:
+            pass  # Best-effort notification
 
     async def _send_intent_card(self, task: Task) -> None:
         """Jarvis Mode: Notify user of the intent before starting execution."""
         notify_target = task.metadata.get("notify_target")
         if not notify_target or notify_target.get("type") != "feishu":
             return
-            
+
         open_id = notify_target.get("open_id")
         if not open_id:
             return
-            
+
         title = f"🤖 Jarvis: 意图预判 - {task.title}"
         content = (
             f"检测到可执行任务，我准备开始处理：\n\n"
@@ -695,9 +895,9 @@ class TaskScheduler:
         )
         actions = [
             {"text": "立即执行", "value": "run_now", "type": "primary", "task_id": task.task_id},
-            {"text": "拦截任务", "value": "stop_task", "type": "danger", "task_id": task.task_id}
+            {"text": "拦截任务", "value": "stop_task", "type": "danger", "task_id": task.task_id},
         ]
-        
+
         try:
             await self.jarvis.send_card_with_nl(
                 user_id=open_id,
@@ -708,8 +908,6 @@ class TaskScheduler:
                 task_id=task.task_id,
             )
         except Exception:
-            import logging
-            logger = logging.getLogger("hermes_os.scheduler")
             logger.warning("Failed to send Jarvis intent card for task %s", task.task_id)
 
     async def _await_confirmation(self, user_id: str, task_id: str) -> bool:
@@ -747,25 +945,39 @@ class TaskScheduler:
         handler2 = self._event_bus.subscribe(EventType.USER_INTERCEPTED, on_intercept)
 
         try:
-            # Wait for either confirm, intercept, or 60s timeout
-            timeout = 60
+            # Wait for either confirm, intercept, or timeout — event-driven, not polling
+            import os
+
+            timeout = int(os.environ.get("HERMES_OS_CONFIRM_TIMEOUT", "60"))
             logger = logging.getLogger("hermes_os.scheduler")
             logger.info("Jarvis: Waiting for user %s confirmation (timeout=%ds)", user_id, timeout)
 
-            for _ in range(timeout):
-                await asyncio.sleep(1)
-                # Also check progress flag as fallback (legacy signal)
-                current = await self.get_task(task_id)
-                if current and current.progress > 0:
-                    logger.info("Jarvis: User triggered [Run Now] via progress flag")
-                    confirmed = True
-                    break
-                if current and current.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
-                    logger.info("Jarvis: Task %s intercepted via status change", task_id)
-                    break
+            # Also check progress flag as fallback (legacy signal via DB poll)
+            async def check_progress_flag() -> None:
+                for _ in range(timeout):
+                    await asyncio.sleep(1)
+                    current = await self.get_task(task_id)
+                    if current and current.progress > 0:
+                        logger.info("Jarvis: User triggered [Run Now] via progress flag")
+                        confirm_event.set()
+                    if current and current.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
+                        logger.info("Jarvis: Task %s intercepted via status change", task_id)
+                        intercept_event.set()
 
-            # If we got here without confirm_event/intercept_event firing,
-            # check if either event was triggered (non-blocking check)
+            progress_task = asyncio.create_task(check_progress_flag())
+
+            done, pending = await asyncio.wait(
+                [
+                    asyncio.create_task(confirm_event.wait()),
+                    asyncio.create_task(intercept_event.wait()),
+                ],
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for p in pending:
+                p.cancel()
+            progress_task.cancel()
+
             if confirm_event.is_set():
                 confirmed = True
         finally:
@@ -917,6 +1129,7 @@ class TaskScheduler:
 
         try:
             from hermes_os.pipeline_engine import PipelineDefinition
+
             definition = PipelineDefinition.from_yaml(pipeline_path)
         except Exception as e:
             logger.error("TaskScheduler: failed to load pipeline %s: %s", pipeline_name, e)
@@ -944,9 +1157,7 @@ class TaskScheduler:
 
         return created
 
-    async def get_macro_progress(
-        self, user_id: str, macro_title: str
-    ) -> dict[str, Any]:
+    async def get_macro_progress(self, user_id: str, macro_title: str) -> dict[str, Any]:
         """Get progress summary for all subtasks of a macro task."""
         tasks = await self.get_tasks_for_user(user_id)
         subtasks = [t for t in tasks if t.metadata.get("macro_title") == macro_title]
@@ -954,9 +1165,7 @@ class TaskScheduler:
             return {"found": False}
 
         total = len(subtasks)
-        completed = sum(
-            1 for t in subtasks if t.status == TaskStatus.COMPLETED
-        )
+        completed = sum(1 for t in subtasks if t.status == TaskStatus.COMPLETED)
         failed = sum(1 for t in subtasks if t.status == TaskStatus.FAILED)
         running = sum(1 for t in subtasks if t.status == TaskStatus.RUNNING)
         pending = total - completed - failed - running

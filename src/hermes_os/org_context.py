@@ -10,7 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from hermes_os.task_scheduler import Task, TaskScheduler
 
 
 class Role(str, Enum):
@@ -25,6 +28,9 @@ class Role(str, Enum):
     BUILD_ERROR_RESOLVER = "build_error_resolver"
     REFACTOR_CLEANER = "refactor_cleaner"
     DOC_UPDATER = "doc_updater"
+    BOOK_AUTHOR = "book_author"
+    DATA_ANALYST = "data_analyst"
+    TESTER = "tester"
 
 
 # Organization-wide identity
@@ -185,6 +191,36 @@ Guidelines:
 """,
         "default_tools": ["Read", "Write", "Glob"],
     },
+    Role.BOOK_AUTHOR: {
+        "description": "Writes high-quality books and structured content",
+        "system_prompt": """You are a Book Author Agent within Hermes OS — an AI-native virtual organization.
+
+Your role: Compose high-quality, structured book content that is insightful and engaging.
+
+Guidelines:
+- Reject "average" writing — aim for sharp arguments and vivid examples.
+- Maintain a consistent voice and narrative arc across chapters.
+- Ensure logical flow and clear transitions.
+- Use evidence-based claims and proper citations.
+- Output: Professional markdown content ready for publishing.
+""",
+        "default_tools": ["Read", "Write", "Glob"],
+    },
+    Role.TESTER: {
+        "description": "Writes and runs tests to ensure software quality",
+        "system_prompt": """You are a Tester Agent within Hermes OS — an AI-native virtual organization.
+
+Your role: Ensure code reliability through rigorous testing.
+
+Guidelines:
+- Write comprehensive unit, integration, and end-to-end tests.
+- Identify edge cases and boundary conditions.
+- Report bugs with clear reproduction steps.
+- Verify fixes and ensure no regressions.
+- Use testing frameworks correctly (pytest, etc.).
+""",
+        "default_tools": ["Read", "Bash", "Glob"],
+    },
 }
 
 
@@ -256,14 +292,15 @@ def _build_org_preamble() -> str:
 
 # Intent-to-role mapping for automatic role selection
 INTENT_TO_ROLE: dict[str, Role] = {
-    "fix_bug": Role.EXECUTOR,
+    "fix_bug": Role.BUILD_ERROR_RESOLVER,
     "deploy": Role.EXECUTOR,
     "code": Role.PLANNER,
     "research": Role.RESEARCHER,
     "review": Role.REVIEWER,
-    "test": Role.EXECUTOR,
+    "test": Role.TESTER,
     "build": Role.BUILD_ERROR_RESOLVER,
     "query": Role.EXECUTOR,
+    "write_book": Role.BOOK_AUTHOR,
 }
 
 
@@ -279,7 +316,7 @@ def get_role_for_intent(intent_action: str) -> Role:
     return INTENT_TO_ROLE.get(intent_action, Role.EXECUTOR)
 
 
-async def build_team_context(task: "Task", scheduler: "TaskScheduler") -> str:
+async def build_team_context(task: Task, scheduler: TaskScheduler) -> str:
     """Build team context for a task within a macro task chain.
 
     Shows:
@@ -326,9 +363,13 @@ def _format_team_context(progress: dict, current_task_id: str) -> str:
     for t in tasks_info:
         tid = t["task_id"]
         marker = " → IN PROGRESS" if tid == current_task_id else ""
-        status_icon = {"completed": "✓", "running": "⟳", "failed": "✗", "pending": "○", "blocked": "⊘"}.get(
-            t["status"], "?"
-        )
+        status_icon = {
+            "completed": "✓",
+            "running": "⟳",
+            "failed": "✗",
+            "pending": "○",
+            "blocked": "⊘",
+        }.get(t["status"], "?")
         lines.append(f"  {status_icon} [{t['status']}] {t['title']}{marker}")
 
         # Show result of completed tasks so current agent can build on them

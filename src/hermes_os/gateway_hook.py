@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import json
+import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from hermes_os.agents.registry_initializer import initialize_agents
+
 initialize_agents()
 
+from hermes_os.approval_tracker import ApprovalTracker
 from hermes_os.chief_agent import ChiefAgent
+from hermes_os.conversation_state import ConversationStateManager
 from hermes_os.event_loop import (
     Event,
     EventBus,
@@ -21,17 +25,15 @@ from hermes_os.event_loop import (
     get_event_bus,
 )
 from hermes_os.gateway_hook_router import HermesOSRouter
+from hermes_os.goal_tracker import GoalTracker
 from hermes_os.knowledge_cli import KnowledgeCLI
 from hermes_os.org_memory import OrgMemory
 from hermes_os.proactive_engine import ProactiveEngine
 from hermes_os.router import GatewayEvent
+from hermes_os.shard_manager import ShardedStorage, ShardManager
+from hermes_os.skill_discovery import SkillDiscovery
 from hermes_os.skill_loader import SkillLoader
 from hermes_os.task_scheduler import TaskScheduler, TaskStatus
-from hermes_os.conversation_state import ConversationStateManager
-from hermes_os.approval_tracker import ApprovalTracker
-from hermes_os.goal_tracker import GoalTracker
-from hermes_os.shard_manager import ShardManager, ShardedStorage
-from hermes_os.skill_discovery import SkillDiscovery
 
 logger = logging.getLogger(__name__)
 
@@ -70,10 +72,11 @@ class HermesOSHook:
 
     def __init__(self, config: HookConfig | None = None) -> None:
         import os
+
         logger.info("JARVIS DETECTOR: Loading Hook from %s", os.path.abspath(__file__))
         # 强行覆盖类属性，确保订阅生效
         self.__class__.events = ["agent:start", "command:start"]
-        
+
         self._config = config or HookConfig()
         self._router: HermesOSRouter | None = None
         self._cli: KnowledgeCLI | None = None
@@ -164,6 +167,7 @@ class HermesOSHook:
         # Wire governance manager for dual-repo memory + donation patrol
         from hermes_os.governance_layer import GovernanceManager
         from hermes_os.jarvis_interface import JarvisInterface
+
         self._governance_manager = GovernanceManager(
             db_path=self._config.db_path,
             jarvis=JarvisInterface(),
@@ -173,7 +177,10 @@ class HermesOSHook:
         self._spawn(
             self._scheduler.start_watcher(interval_seconds=self._config.scheduler_poll_interval)
         )
-        logger.info("TaskScheduler watcher started (poll_interval=%.1fs)", self._config.scheduler_poll_interval)
+        logger.info(
+            "TaskScheduler watcher started (poll_interval=%.1fs)",
+            self._config.scheduler_poll_interval,
+        )
 
     def _start_github_server(self, port: int) -> None:
         """Start the GitHub webhook FastAPI server in a background thread.
@@ -181,8 +188,8 @@ class HermesOSHook:
         Uses uvicorn's HTTP proxy mode to avoid asyncio conflict with the
         gateway hook's own event loop.
         """
-        import threading
         import socket
+        import threading
 
         # Check if port is already in use before attempting to bind
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -197,6 +204,7 @@ class HermesOSHook:
 
         def run():
             import uvicorn
+
             from hermes_os.github_monitor import app as github_app
 
             try:
@@ -298,15 +306,32 @@ class HermesOSHook:
             user_id_alt=user_id_alt,
         )
 
+        # Inject GoalTracker context: enables "继续上次那件事" understanding
+        user_id = routed.user.user_id
+        if user_id and self._goal_tracker:
+            try:
+                goal_ctx = await self._goal_tracker.get_active_goal_context(user_id)
+                if goal_ctx:
+                    gateway_event_obj.text = (
+                        f"{gateway_event_obj.text}\n\n<goal_context>\n{goal_ctx}\n</goal_context>"
+                    )
+            except Exception:
+                logger.debug("Failed to inject goal context for user %s", user_id)
+
         # Inject transient skills discovered at runtime (SkillDiscovery feedback loop)
-        loader = SkillLoader()
-        fragments = loader.get_all_prompt_fragments(max_skills=5)
+        loader = SkillLoader(skill_discovery=self._skill_discovery)
+        fragments = loader.get_all_prompt_fragments(max_skills=5, record_usage=True)
         if fragments:
-            gateway_event_obj.text = (
-                f"{gateway_event_obj.text}\n\n{fragments}"
-            )
-            # Record skill usage for effectiveness feedback loop
-            self._spawn(self._record_skill_usage_bg(loader, max_skills=5))
+            gateway_event_obj.text = f"{gateway_event_obj.text}\n\n{fragments}"
+
+        # Inject per-user persona: communication style, detail level, tone
+        if user_id:
+            from hermes_os.persona_assembler import PersonaAssembler
+
+            assembler = PersonaAssembler(user_id=user_id)
+            persona_block = await assembler.assemble()
+            # Prepend persona block to the message (System Prompt injection)
+            gateway_event_obj.text = f"{persona_block.render()}\n\n{gateway_event_obj.text}"
 
     def _publish_user_message(self, context: dict, message: str) -> None:
         """Publish a USER_MESSAGE event (non-blocking, never raises)."""
@@ -371,6 +396,15 @@ class HermesOSHook:
                     intent.confidence,
                 )
 
+                # Delegation feedback: tell the user "收到，我去安排"
+                self._spawn(
+                    self._send_delegation_feedback(
+                        user_id=user_id,
+                        task_type=intent.action.value,
+                        task_count=len(tasks),
+                    )
+                )
+
                 # Publish skill discovery event so event loop can react
                 event = Event(
                     type=EventType.USER_MESSAGE,
@@ -384,16 +418,52 @@ class HermesOSHook:
                 )
                 self._spawn(self._event_bus.publish(event))
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("ChiefAgent intent processing timed out after 30s for user %s", user_id)
         except Exception:
             # Never let ChiefAgent errors block message processing
             logger.debug("ChiefAgent intent processing failed", exc_info=True)
 
+    async def _send_delegation_feedback(
+        self,
+        user_id: str,
+        task_type: str,
+        task_count: int,
+    ) -> None:
+        """Send "收到，我去安排" delegation feedback to user (non-blocking).
+
+        This is the 管家's immediate acknowledgment when a task is created.
+        Sends a brief plain-text Feishu message — no card, no buttons.
+        """
+        from hermes_os.feishu_enhancer import FeishuEnhancer
+
+        action_verbs = {
+            "research": "调研",
+            "code": "写代码",
+            "build": "构建",
+            "deploy": "部署",
+            "fix_bug": "修复",
+            "review": "审查",
+            "test": "测试",
+            "write_book": "写书",
+            "write": "写作",
+        }
+        verb = action_verbs.get(task_type, "处理")
+        count_hint = f"{task_count} 个子任务" if task_count > 1 else "任务"
+
+        message = f"收到，我去{verb}。已创建 {count_hint}，正在调度执行，完成后向您汇报。"
+
+        try:
+            feishu = FeishuEnhancer()
+            await feishu.send_message_to_user(user_id=user_id, message=message)
+        except Exception:
+            logger.debug("Delegation feedback send failed for user %s", user_id)
+
     def _get_user_profile(self, user_id_alt: str) -> dict | None:
         """Look up a user profile from hermes_state.UserProfileDB by union_id."""
         try:
             from hermes_state import UserProfileDB
+
             updb = UserProfileDB()
             return updb.get_profile_by_alt(user_id_alt)
         except Exception:
@@ -461,10 +531,12 @@ class HermesOSHook:
             tasks = await self._scheduler.get_all_tasks()
             if not tasks:
                 return
-            
-            target_task = tasks[0] # 最近创建的任务
+
+            target_task = tasks[0]  # 最近创建的任务
             if action == "run_now":
-                await self._scheduler.update_task_status(target_task.task_id, target_task.status, progress=0.1)
+                await self._scheduler.update_task_status(
+                    target_task.task_id, target_task.status, progress=0.1
+                )
                 logger.info("Jarvis: Fallback Text Trigger [Go] for task %s", target_task.task_id)
         except Exception:
             logger.debug("Failed to process text trigger", exc_info=True)
@@ -498,7 +570,9 @@ class HermesOSHook:
                     )
                     self._spawn(self._event_bus.publish(event))
             elif action == "stop_task":
-                await self._scheduler.update_task_status(task_id, TaskStatus.FAILED, error="User intercepted task.")
+                await self._scheduler.update_task_status(
+                    task_id, TaskStatus.FAILED, error="User intercepted task."
+                )
                 logger.info("Jarvis: User triggered [Intercept] for task %s", task_id)
                 # Publish USER_INTERCEPTED event
                 if user_id and self._event_bus:
@@ -512,7 +586,6 @@ class HermesOSHook:
                 content_path = data.get("content_path")
                 category = data.get("category", "概念")
                 if content_path and self._governance_manager:
-                    from hermes_os.router import GatewayEvent
                     router = await self._get_router()
                     # Get user from router or use user_id from task
                     user = None
