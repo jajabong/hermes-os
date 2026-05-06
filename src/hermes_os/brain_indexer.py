@@ -71,6 +71,7 @@ class BrainIndexer:
                 current_mtime = self._brain_mtime(brain_dir)
                 age_seconds = (datetime.now(UTC) - cached.last_indexed).total_seconds()
                 if current_mtime <= cached_mtime and age_seconds < self._ttl:
+                    cached.last_indexed = datetime.now(UTC)  # Reset TTL on access
                     return cached
             except Exception:
                 pass

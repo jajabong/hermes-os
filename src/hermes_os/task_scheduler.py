@@ -35,6 +35,7 @@ from hermes_os.org_context import build_team_context
 from hermes_os.org_memory import OrgMemory
 from hermes_os.skill_discovery import CapabilityGap, SkillDiscovery
 from hermes_os.skill_loader import SkillLoader
+from hermes_os.topic_tracker import TopicTracker
 
 # Default org identity injected when no other context is available
 DEFAULT_ORG_IDENTITY = (
@@ -327,7 +328,7 @@ class TaskScheduler:
             await self._on_task_completed(task_id)
 
     async def _on_task_completed(self, task_id: str) -> None:
-        """Handle task completion: update DAG parent progress and notify user."""
+        """Handle task completion: update DAG parent progress, notify user, clear TopicTracker."""
         task = await self.get_task(task_id)
         if not task:
             return
@@ -343,6 +344,13 @@ class TaskScheduler:
         dag_parent = await self._find_dag_parent(dag_id)
         if dag_parent:
             await self._send_dag_progress_notification(dag_parent, task)
+
+        # Clear TopicTracker entry for this task so "继续上次" doesn't reference a finished task
+        try:
+            tracker = TopicTracker(user_id=task.user_id)
+            await tracker.complete_topic(task_id)
+        except Exception:
+            logger.debug("Failed to complete topic for task %s", task_id)
 
     async def _update_dag_progress(self, dag_id: str) -> None:
         """Update DAG parent completion count based on completed children."""
