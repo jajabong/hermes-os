@@ -7,6 +7,7 @@ Pipeline phases:
 4. Agent matching     → agent name (INTENT_AGENT_MAP)
 5. Agent invocation   → AgentResult (matched VerticalAgent)
 6. Response storage  → MemoryHub + SessionManager
+7. Preference learning → StyleSignalDetector → hub.learn_preference()
 
 Replaces the fragmented routing across:
 - UserRouter.route() (message enrichment only)
@@ -226,6 +227,9 @@ class UnifiedRouter:
         self._user_registry = user_registry  # Lazily initialized in route()
         self._topic_tracker_factory = topic_tracker_factory
         self._delegation_protocol = delegation_protocol
+        # Phase 7: Preference learning — shared across turns within a session
+        from hermes_os.preference_learning import StyleSignalDetector
+        self._signal_detector = StyleSignalDetector()
 
     def classify_intent(self, message: str) -> str:
         """Keyword-based intent classification with weighted scoring.
@@ -462,6 +466,23 @@ class UnifiedRouter:
             if agent_result.success:
                 await hub.store(result_message, layer="recent")
                 await sessions.add_message(user.user_id, "assistant", result_message)
+
+                # Phase 7: Learn preference signals from conversation
+                # Detect explicit ("太长了") and implicit (brevity follow-up) signals
+                self._signal_detector.detect_signals(
+                    user_message=event.message,
+                    prior_response=result_message,
+                    conversation_history=session.conversation_history if session else [],
+                )
+                # Persist signals that have crossed the confidence threshold
+                for pref in self._signal_detector.pending_persists():
+                    await hub.learn_preference(pref["key"], pref["value"])
+                    logger.info(
+                        "[UnifiedRouter] Learned preference: %s=%s",
+                        pref["key"],
+                        pref["value"],
+                    )
+                self._signal_detector.clear_persisted()
             else:
                 # Agent returned failure — fall back to ChiefAgent
                 logger.warning(
