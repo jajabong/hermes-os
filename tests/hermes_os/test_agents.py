@@ -84,7 +84,7 @@ async def test_labor_agent_adapter_delegates_to_labor() -> None:
     adapter = LaborAgentAdapter(mock_labor, "MockLabor")
     request = AgentRequest(
         intent="code",
-        params={"task": "写一个函数", "meta": {"key": "value"}},
+        params={"message": "写一个函数", "meta": {"key": "value"}},
         context={"workspace": "/tmp"},
     )
     await adapter.invoke(request, {})

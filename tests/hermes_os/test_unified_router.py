@@ -215,7 +215,7 @@ async def test_route_full_pipeline(
     result = await router.route(mock_gateway_event)
 
     assert result.intent == "investment"
-    assert result.agent_name == "InvestmentAgent"
+    assert result.agent_name == "ResearchAgent"
     assert result.is_fallback is False
     assert "投资分析" in result.message
 
@@ -353,7 +353,7 @@ async def test_route_returns_route_result(
     result = await router.route(mock_gateway_event)
 
     assert isinstance(result, RouteResult)
-    assert result.agent_name == "InvestmentAgent"
+    assert result.agent_name == "ResearchAgent"
 
 
 @pytest.mark.asyncio
