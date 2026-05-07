@@ -90,12 +90,20 @@ class UnifiedRouter:
             "投资",
             "理财",
             "股票",
+            "股价",
+            "涨",
+            "跌",
             "基金",
             "资产配置",
             "收益率",
             "风险",
             "组合",
             "财务",
+            "涨跌",
+            "今日",
+            "收盘",
+            "指数",
+            "大盘",
         ],
         "legal": [
             "法律",
@@ -106,6 +114,7 @@ class UnifiedRouter:
             "律师",
             "法规",
             "法律咨询",
+            "风险",
         ],
         # review BEFORE code because "代码审查" is more specific than "代码"
         "review": [
@@ -179,6 +188,8 @@ class UnifiedRouter:
             "老师",
             "作业",
             "升学",
+            "学习路径",
+            "学习计划",
         ],
         "deploy": [
             "部署",
