@@ -89,8 +89,9 @@ quality_score: 0.8
     loader = SkillLoader(transient_dir=skills_dir, skill_discovery=discovery)
 
     # get_all_prompt_fragments calls load_transient_skills internally
-    fragments = loader.get_all_prompt_fragments(max_skills=5)
+    fragments, names = loader.get_all_prompt_fragments(max_skills=5)
     assert "test-skill" in fragments
+    assert "test-skill" in names
 
     # record_usage should have been called for this skill (via fire-and-forget task)
     # Wait briefly for the fire-and-forget task to complete
@@ -127,8 +128,9 @@ quality_score: 0.8
     await discovery._lazy_init()
     loader = SkillLoader(transient_dir=skills_dir, skill_discovery=discovery)
 
-    fragments = loader.get_all_prompt_fragments(max_skills=5, record_usage=False)
+    fragments, names = loader.get_all_prompt_fragments(max_skills=5, record_usage=False)
     assert "quiet-skill" in fragments
+    assert "quiet-skill" in names
 
     await asyncio.sleep(0.1)
 

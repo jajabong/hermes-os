@@ -347,7 +347,7 @@ class HermesOSHook:
 
         # Inject transient skills discovered at runtime (SkillDiscovery feedback loop)
         loader = SkillLoader(skill_discovery=self._skill_discovery)
-        fragments = loader.get_all_prompt_fragments(max_skills=5, record_usage=True)
+        fragments, _ = loader.get_all_prompt_fragments(max_skills=5, record_usage=True)
         if fragments:
             gateway_event_obj.text = f"{gateway_event_obj.text}\n\n{fragments}"
 

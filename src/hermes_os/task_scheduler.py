@@ -39,6 +39,9 @@ from hermes_os.skill_discovery import CapabilityGap, SkillDiscovery
 from hermes_os.skill_loader import SkillLoader
 from hermes_os.topic_tracker import TopicTracker
 
+# hermes-agent SDK availability — True when AIAgent Python API is available
+from hermes_os.hermes_agent_invoker import HERMES_AGENT_SDK_AVAILABLE
+
 # Default org identity injected when no other context is available
 DEFAULT_ORG_IDENTITY = (
     "You are operating as a member of Hermes OS — an AI-native virtual organization. "
@@ -1084,7 +1087,12 @@ class TaskScheduler:
 
                 # Inject transient skills via SkillLoader (with effectiveness tracking)
                 loader = SkillLoader(skill_discovery=self._skill_discovery)
-                skills_fragment = loader.get_all_prompt_fragments(max_skills=5, record_usage=True)
+                skills_fragment, loaded_skill_names = loader.get_all_prompt_fragments(
+                    max_skills=5, record_usage=True
+                )
+                # Track the primary skill used for this task (for effectiveness loop)
+                if loaded_skill_names:
+                    task.metadata["skill_used"] = loaded_skill_names[0]
 
                 # Inject relevant org memory
                 memory_fragment = self._org_memory.search_relevant_memory(task.description)
@@ -1102,16 +1110,29 @@ class TaskScheduler:
                 if not system_prompt:
                     system_prompt = DEFAULT_ORG_IDENTITY
 
-                # Execute via ClaudeCodeInvoker
-                result = await invoke(
-                    prompt=task.description,
-                    cwd=cwd,
-                    max_turns=max_turns,
-                    timeout_sec=timeout_sec,
-                    allowed_tools=allowed_tools,
-                    model=model,
-                    system_prompt=system_prompt,
-                )
+                # Execute via ClaudeCodeInvoker or hermes-agent SDK (when available)
+                if HERMES_AGENT_SDK_AVAILABLE:
+                    from hermes_os.hermes_agent_invoker import invoke_hermes_agent
+
+                    result = await invoke_hermes_agent(
+                        prompt=task.description,
+                        cwd=cwd,
+                        max_turns=max_turns,
+                        timeout_sec=timeout_sec,
+                        allowed_tools=allowed_tools,
+                        model=model,
+                        system_prompt=system_prompt,
+                    )
+                else:
+                    result = await invoke(
+                        prompt=task.description,
+                        cwd=cwd,
+                        max_turns=max_turns,
+                        timeout_sec=timeout_sec,
+                        allowed_tools=allowed_tools,
+                        model=model,
+                        system_prompt=system_prompt,
+                    )
 
                 # Record task result in org memory
                 self._org_memory.record_task_result(task.description, success=True)

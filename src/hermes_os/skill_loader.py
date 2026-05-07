@@ -140,26 +140,36 @@ class SkillLoader:
         parts.append("---")
         return "\n".join(parts)
 
-    def get_all_prompt_fragments(self, max_skills: int = 10, record_usage: bool = True) -> str:
-        """Load all transient skills and return a merged fragment string.
+    def get_all_prompt_fragments(
+        self, max_skills: int = 10, record_usage: bool = True
+    ) -> tuple[str, list[str]]:
+        """Load all transient skills and return a merged fragment string + skill names.
 
-        Useful for injecting into claude -p system_prompt or appending to prompt.
+        Returns:
+            Tuple of (fragment_string, skill_names_list).
+            fragment_string is empty if no skills meet quality threshold.
+            skill_names_list contains names of skills that were loaded (for effectiveness tracking).
+
         Skips skills with quality_score < 0.3 (low quality).
         """
         skills = self.load_transient_skills(record_usage=record_usage)
 
         fragments: list[str] = []
-        for skill in skills[:max_skills]:
+        loaded_names: list[str] = []
+        for skill in skills:
             score = skill.get("quality_score", 0.0)
             if score < 0.3:
                 continue
             fragments.append(self.get_skill_prompt_fragment(skill))
+            name = skill.get("name", "")
+            if name:
+                loaded_names.append(name)
 
         if not fragments:
-            return ""
+            return "", []
 
         header = "## Transient Skills (auto-discovered, high quality)\n"
-        return header + "\n\n".join(fragments)
+        return header + "\n\n".join(fragments), loaded_names
 
     def get_skill_by_name(self, name: str) -> dict[str, Any] | None:
         """Get a single skill by name."""

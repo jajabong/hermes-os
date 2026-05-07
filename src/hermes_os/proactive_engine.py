@@ -1374,6 +1374,7 @@ class ProactiveEngine:
                     scheduler=self._scheduler,
                     max_suggestions=3,
                     org_memory=self._org_memory,
+                    push_to_user=True,  # Push card to user via JarvisInterface
                 )
                 suggestions.extend(chief_suggestions)
             except Exception:

@@ -175,13 +175,18 @@ Rules:
 class ChiefAgent:
     """Chief Agent: orchestrates intent parsing, task planning, and proactive suggestions."""
 
-    def __init__(self, model: str = "sonnet") -> None:
+    def __init__(self, model: str = "sonnet", jarvis: "JarvisInterface | None" = None) -> None:
         self.model = model
         self._goal_tracker: GoalTracker | None = None
+        self._jarvis = jarvis
 
     def set_goal_tracker(self, tracker: GoalTracker) -> None:
         """Inject GoalTracker for deep goal understanding."""
         self._goal_tracker = tracker
+
+    def set_jarvis(self, jarvis: "JarvisInterface") -> None:
+        """Inject JarvisInterface for proactive card delivery."""
+        self._jarvis = jarvis
 
     async def parse_intent(
         self,
@@ -515,17 +520,52 @@ class ChiefAgent:
 
         return tasks
 
+    async def send_proactive_suggestion_card(
+        self,
+        user_id: str,
+        suggestions: list[str],
+    ) -> None:
+        """Send proactive suggestion card to user via JarvisInterface.
+
+        This is the active discovery mechanism — pushing suggestions proactively
+        instead of waiting for user to ask.
+        """
+        if not self._jarvis:
+            return
+
+        combined = "\n".join(f"• {s}" for s in suggestions[:3])
+        content = (
+            f"**💡 主动建议**\n\n{combined}\n\n"
+            f"有什么我可以帮您的吗？"
+        )
+
+        try:
+            await self._jarvis.send_card_with_nl(
+                user_id=user_id,
+                title="💡 Hermes OS 主动建议",
+                content=content,
+                actions=[],
+                nl_summary=f"主动建议: {suggestions[0] if suggestions else '无'}",
+            )
+        except Exception:
+            pass
+
     async def get_proactive_suggestions(
         self,
         user_id: str,
         scheduler: TaskScheduler,
         max_suggestions: int = 3,
         org_memory: "OrgMemory | None" = None,
+        push_to_user: bool = False,
     ) -> list[str]:
         """Analyze pending/failed tasks and suggest next actions.
 
         This is called proactively — without user input — to drive
         the 7x24 autonomous behavior.
+
+        Args:
+            push_to_user: If True, sends suggestion card via JarvisInterface
+                          in addition to returning the suggestions list.
         """
         suggestions: list[str] = []
 
@@ -593,6 +633,10 @@ class ChiefAgent:
 
         except Exception:
             pass
+
+        # Optionally push card to user via JarvisInterface
+        if push_to_user and self._jarvis and suggestions:
+            await self.send_proactive_suggestion_card(user_id, suggestions[:max_suggestions])
 
         return suggestions[:max_suggestions]
 

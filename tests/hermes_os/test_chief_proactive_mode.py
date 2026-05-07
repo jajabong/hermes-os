@@ -195,7 +195,7 @@ async def test_patrol_proactive_suggestions_iterates_all_shard_users(tmp_path: P
 
     called_for: list[str] = []
 
-    async def mock_suggestions(user_id: str, scheduler, max_suggestions: int = 3):
+    async def mock_suggestions(user_id: str, scheduler, max_suggestions: int = 3, **kwargs):
         called_for.append(user_id)
         return []
 
@@ -231,3 +231,149 @@ async def test_get_suggestions_for_user_no_scheduler_returns_empty(tmp_path: Pat
 
     # With no scheduler, no tasks → empty suggestions
     assert isinstance(suggestions, list)
+
+
+# ---------------------------------------------------------------------------
+# Tests: JarvisInterface injection and proactive card delivery
+# ---------------------------------------------------------------------------
+
+
+from hermes_os.chief_agent import ChiefAgent
+
+
+@pytest.mark.asyncio
+async def test_chief_agent_init_with_jarvis_parameter() -> None:
+    """ChiefAgent.__init__ should accept jarvis parameter."""
+    mock_jarvis = AsyncMock()
+    chief = ChiefAgent(jarvis=mock_jarvis)
+    assert chief._jarvis is mock_jarvis
+
+
+@pytest.mark.asyncio
+async def test_chief_set_jarvis_method() -> None:
+    """ChiefAgent.set_jarvis() should inject JarvisInterface."""
+    chief = ChiefAgent()
+    mock_jarvis = AsyncMock()
+    chief.set_jarvis(mock_jarvis)
+    assert chief._jarvis is mock_jarvis
+
+
+@pytest.mark.asyncio
+async def test_chief_sends_proactive_card_via_jarvis() -> None:
+    """When push_to_user=True, send_proactive_suggestion_card is called."""
+    from hermes_os.chief_agent import ChiefAgent
+
+    chief = ChiefAgent()
+    mock_jarvis = AsyncMock()
+    chief.set_jarvis(mock_jarvis)
+
+    await chief.send_proactive_suggestion_card(
+        user_id="alice",
+        suggestions=["Task 'Build agent' failed - consider retry", "Goal progress 80%"],
+    )
+
+    mock_jarvis.send_card_with_nl.assert_called_once()
+    call_kwargs = mock_jarvis.send_card_with_nl.call_args
+    assert call_kwargs.kwargs["user_id"] == "alice"
+    assert "💡" in call_kwargs.kwargs["title"]
+    assert "主动建议" in call_kwargs.kwargs["title"]
+
+
+@pytest.mark.asyncio
+async def test_chief_no_jarvis_no_crash() -> None:
+    """ChiefAgent with no Jarvis set should not crash on send_proactive_suggestion_card."""
+    from hermes_os.chief_agent import ChiefAgent
+
+    chief = ChiefAgent()
+    # No jarvis set - should not raise
+    await chief.send_proactive_suggestion_card(
+        user_id="alice",
+        suggestions=["Test suggestion"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_proactive_suggestions_with_push_to_user() -> None:
+    """get_proactive_suggestions(push_to_user=True) sends card via Jarvis."""
+    from hermes_os.chief_agent import ChiefAgent
+
+    chief = ChiefAgent()
+    mock_jarvis = AsyncMock()
+    chief.set_jarvis(mock_jarvis)
+
+    scheduler = MagicMock()
+    scheduler.get_tasks_for_user = AsyncMock(return_value=[])
+
+    # Give chief a goal tracker so suggestions are generated
+    mock_goal_tracker = MagicMock()
+    mock_goal = MagicMock()
+    mock_goal.is_completed = False
+    mock_goal.progress = 0.75
+    mock_goal.current_phase = "实现"
+    mock_goal.next_phase = "测试"
+    mock_goal_tracker.get_active_goal = AsyncMock(return_value=mock_goal)
+    chief._goal_tracker = mock_goal_tracker
+
+    suggestions = await chief.get_proactive_suggestions(
+        user_id="alice",
+        scheduler=scheduler,
+        push_to_user=True,
+    )
+
+    # Jarvis should be called because we have goal-based suggestions
+    assert len(suggestions) >= 1
+    mock_jarvis.send_card_with_nl.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_proactive_suggestions_without_push_returns_only_list() -> None:
+    """get_proactive_suggestions(push_to_user=False) returns list without sending card."""
+    from hermes_os.chief_agent import ChiefAgent
+
+    chief = ChiefAgent()
+    mock_jarvis = AsyncMock()
+    chief.set_jarvis(mock_jarvis)
+
+    scheduler = MagicMock()
+    scheduler.get_tasks_for_user = AsyncMock(return_value=[])
+
+    suggestions = await chief.get_proactive_suggestions(
+        user_id="alice",
+        scheduler=scheduler,
+        push_to_user=False,
+    )
+
+    mock_jarvis.send_card_with_nl.assert_not_called()
+    assert isinstance(suggestions, list)
+
+
+@pytest.mark.asyncio
+async def test_suggestions_work_without_failed_tasks(tmp_path: Path) -> None:
+    """ChiefAgent still returns goal-based suggestions even when no tasks failed."""
+    from hermes_os.chief_agent import ChiefAgent
+
+    chief = ChiefAgent()
+    mock_jarvis = AsyncMock()
+    chief.set_jarvis(mock_jarvis)
+
+    scheduler = MagicMock()
+    scheduler.get_tasks_for_user = AsyncMock(return_value=[])
+
+    mock_goal_tracker = MagicMock()
+    mock_goal = MagicMock()
+    mock_goal.is_completed = False
+    mock_goal.progress = 0.75
+    mock_goal.current_phase = "实现"
+    mock_goal.next_phase = "测试"
+    mock_goal_tracker.get_active_goal = AsyncMock(return_value=mock_goal)
+    chief._goal_tracker = mock_goal_tracker
+
+    suggestions = await chief.get_proactive_suggestions(
+        user_id="alice",
+        scheduler=scheduler,
+        push_to_user=False,
+    )
+
+    assert len(suggestions) >= 1
+    goal_suggestions = [s for s in suggestions if "🎯" in s]
+    assert len(goal_suggestions) >= 1
