@@ -144,6 +144,9 @@ INTENT_PROMPT_TEMPLATE = """You are the Intent Understanding Layer of Hermes OS 
 Parse the user's message into a structured intent. If multiple distinct actions are present,
 return the PRIMARY one (highest confidence).
 
+## User Communication Style
+{user_persona}
+
 ## User Message
 {message}
 
@@ -195,6 +198,7 @@ class ChiefAgent:
         recent_tasks: str = "",
         recent_messages: str = "",
         goal_tracker: GoalTracker | None = None,
+        user_persona: str = "",
     ) -> ParsedIntent:
         """Parse user message into a structured ParsedIntent using LLM.
 
@@ -204,6 +208,7 @@ class ChiefAgent:
             recent_tasks: Recent task history (optional)
             recent_messages: Recent conversation messages (optional)
             goal_tracker: GoalTracker instance for deep goal context injection
+            user_persona: Per-user communication style (from PersonaAssembler)
         """
         tracker = goal_tracker or self._goal_tracker
         context_parts = []
@@ -244,6 +249,7 @@ class ChiefAgent:
         prompt = INTENT_PROMPT_TEMPLATE.format(
             message=message,
             context=context,
+            user_persona=user_persona or "Default communication style (standard detail level).",
         )
 
         # Build system prompt with North Star Goal at the top

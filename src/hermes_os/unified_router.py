@@ -293,9 +293,12 @@ class UnifiedRouter:
 
         # Phase 3c: Check for continuation intent ("接着上次继续")
         continuation_context = None
+        should_resume = False
         if self._topic_tracker_factory is not None:
             tracker = self._topic_tracker_factory(user_id=user.user_id)
             should_resume, continuation_context = await tracker.detect_and_resume(event.message)
+            if should_resume and continuation_context:
+                logger.info("[UnifiedRouter] Continuation detected: %s", continuation_context.get("topic", "unknown"))
 
         # Phase 3d: Check if clarification is needed (模糊意图澄清)
         clarification_result = None
@@ -335,10 +338,23 @@ class UnifiedRouter:
         intent = self.classify_intent(event.message)
 
         if intent == "unknown":
-            # Use ChiefAgent for ambiguous cases
+            # Use ChiefAgent for ambiguous cases — pass conversation history for context
             chief = ChiefAgent()
             try:
-                parsed = await chief.parse_intent(event.message, user.user_id)
+                # Build recent messages string from session history
+                recent_messages_str = ""
+                if session and session.conversation_history:
+                    recent_lines = []
+                    for msg in session.conversation_history[-6:]:  # last 6 turns
+                        recent_lines.append(f"{msg.role}: {msg.content[:200]}")
+                    recent_messages_str = "\n".join(recent_lines)
+
+                parsed = await chief.parse_intent(
+                    event.message,
+                    user.user_id,
+                    recent_messages=recent_messages_str,
+                    user_persona=persona_block.render() if persona_block else "",
+                )
                 intent = (
                     parsed.action.value if hasattr(parsed.action, "value") else str(parsed.action)
                 )
@@ -400,6 +416,21 @@ class UnifiedRouter:
             agent_name = "ChiefAgent"
             is_fallback = True
 
+        # Phase 5c: Inject continuation context into message when resuming
+        # "接着上次继续" → agent receives full prior context
+        effective_message = event.message
+        if should_resume and continuation_context:
+            topic_name = continuation_context.get("topic", "上次的话题")
+            task_id = continuation_context.get("task_id", "")
+            prior_summary = continuation_context.get("summary", "")
+            # Prepend continuation context to help agent understand what to resume
+            effective_message = (
+                f"继续之前的任务：{topic_name}\n"
+                f"任务ID: {task_id}\n"
+                + (f"上次进展: {prior_summary}\n" if prior_summary else "")
+                + f"\n用户原话: {event.message}"
+            )
+
         result_message = ""
         try:
             agent = self._agent_registry.get_agent(agent_name)
@@ -407,12 +438,16 @@ class UnifiedRouter:
             fallback_chain = model_selector.get_fallback_chain(routing_decision.tier)
             request = AgentRequest(
                 intent=intent,
-                params={"message": event.message},
+                params={"message": effective_message},
                 context={
                     "user": user,
                     "session_id": session.session_id if session else "",
                     "memory_context": ctx,
                     "persona_block": persona_block,
+                    # Continuation context (千人千面: "接着上次继续" support)
+                    "continuation_context": continuation_context if should_resume else None,
+                    # Conversation history for agent context
+                    "conversation_history": session.conversation_history if session else [],
                     # Model routing
                     "model_tier": routing_decision.tier.value,
                     "model_complexity_reason": routing_decision.complexity_reason,
