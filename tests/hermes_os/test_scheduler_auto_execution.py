@@ -346,3 +346,49 @@ async def test_send_notification_noop_without_notify_target(scheduler: TaskSched
     await scheduler._send_notification(task, status="completed")
 
     mock_jarvis.send_card_with_nl.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_pipeline_task_delegates_to_pipeline_task_runner(scheduler: TaskScheduler) -> None:
+    """When task has pipeline_name/stage_name metadata, PipelineTaskRunner handles it."""
+    from unittest.mock import MagicMock, patch
+
+    from hermes_os.pipeline_task_runner import PipelineTaskRunner
+
+    # Create a pipeline task via create_pipeline_tasks
+    tasks = await scheduler.create_pipeline_tasks(
+        user_id="alice",
+        topic="Test Book",
+        pipeline_name="Book Authoring Pipeline",
+        metadata={"skip_confirmation": True},
+    )
+    assert len(tasks) > 0
+
+    pipeline_task = tasks[0]
+    assert pipeline_task.metadata.get("pipeline_name") == "Book Authoring Pipeline"
+    assert "stage_name" in pipeline_task.metadata
+
+    # Verify is_pipeline_task returns True
+    assert PipelineTaskRunner.is_pipeline_task(pipeline_task.metadata) is True
+
+    # Mock PipelineTaskRunner.execute_pipeline_task to avoid real execution
+    mock_ws = MagicMock()
+    mock_ws.failed_stages = []
+
+    # Patch at the source module — PipelineTaskRunner is imported inside _process_pending_tasks
+    with patch("hermes_os.pipeline_task_runner.PipelineTaskRunner.execute_pipeline_task", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = mock_ws
+
+        # Patch invoke to fail if called (shouldn't be for pipeline tasks)
+        with patch("hermes_os.task_scheduler.invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = MagicMock(stdout="should not be called")
+
+            try:
+                await scheduler._process_pending_tasks()
+            except Exception:
+                pass
+
+        # execute_pipeline_task should have been called for the pipeline task
+        assert mock_exec.call_count >= 1
+        # invoke() should NOT have been called for pipeline tasks
+        assert mock_invoke.call_count == 0

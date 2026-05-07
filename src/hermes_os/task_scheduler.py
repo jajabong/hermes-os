@@ -1065,6 +1065,41 @@ class TaskScheduler:
                 except Exception:
                     logger.debug("Failed to send running update for task %s", task.task_id)
 
+            # Pipeline task: delegate to PipelineTaskRunner instead of plain invoke()
+            from hermes_os.pipeline_task_runner import PipelineTaskRunner
+
+            if PipelineTaskRunner.is_pipeline_task(task.metadata):
+                logger.info("Jarvis: Task %s is a pipeline stage, delegating to PipelineTaskRunner", task.task_id)
+                try:
+                    runner = PipelineTaskRunner(
+                        artifact_base=str(Path.home() / ".hermes" / "artifacts"),
+                        notification_manager=self.notification_manager,
+                        guardian=self.guardian,
+                        storage=None,
+                    )
+                    ws = await runner.execute_pipeline_task(task.task_id, task.metadata, {})
+
+                    if ws is not None:
+                        # Check if this was the last stage or still has more
+                        failed_stages = getattr(ws, "failed_stages", [])
+                        if failed_stages:
+                            await self.update_task_status(task.task_id, TaskStatus.FAILED, error=f"Failed stages: {', '.join(failed_stages)}")
+                        else:
+                            await self.update_task_status(task.task_id, TaskStatus.COMPLETED, result=f"Pipeline stage '{task.metadata.get('stage_name')}' completed")
+                    else:
+                        await self.update_task_status(task.task_id, TaskStatus.FAILED, error="Pipeline stage execution returned None")
+
+                    # Unblock dependents
+                    await self.unblock_dependents(task.task_id)
+
+                    # Send completion notification
+                    await self._send_notification(task, status="completed", result="Pipeline stage completed")
+                    continue  # skip the normal invoke() path
+                except Exception as e:
+                    logger.error("PipelineTaskRunner error for task %s: %s", task.task_id, e)
+                    await self.update_task_status(task.task_id, TaskStatus.FAILED, error=str(e))
+                    continue
+
             try:
                 # Extract execution parameters from metadata
                 cwd = task.metadata.get("cwd")
