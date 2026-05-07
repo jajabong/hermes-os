@@ -7,6 +7,7 @@ from hermes_os.agents.chief_agent_adapter import ChiefAgentAdapter
 from hermes_os.agents.deploy_agent import DeployAgent
 from hermes_os.agents.education_agent import EducationAgent
 from hermes_os.agents.investment_agent import InvestmentAgent
+from hermes_os.agents.intelligence_agent import IntelligenceAgent
 from hermes_os.agents.labor_agent_adapter import LaborAgentAdapter
 from hermes_os.agents.legal_agent import LegalAgent
 from hermes_os.agents.review_agent import ReviewAgent
@@ -43,6 +44,7 @@ def initialize_agents() -> None:
     registry.register("ReviewAgent", ReviewAgent())
     registry.register("TestAgent", TestAgent())
     registry.register("BookPipelineAgent", BookPipelineAgent())
+    registry.register("IntelligenceAgent", IntelligenceAgent())  # Shared live data for all agents
 
     # === Execution Agents: Code/Content/Research ===
     # Core execution agents with full invoke() implementations
