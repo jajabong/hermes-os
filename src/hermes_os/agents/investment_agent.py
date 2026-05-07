@@ -16,6 +16,21 @@ from typing import Any
 from hermes_os.claude_code_invocator import invoke
 from hermes_os.vertical_agent import AgentRequest, AgentResult
 
+# Lazy import to avoid hard dependency
+_tavily_client: Any = None
+
+
+def _get_tavily() -> Any:
+    global _tavily_client
+    if _tavily_client is None:
+        try:
+            from tavily import TavilyClient
+
+            _tavily_client = TavilyClient("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")
+        except Exception:
+            pass
+    return _tavily_client
+
 
 INVESTMENT_SYSTEM_PROMPT = """你是 Hermes OS 的投资分析专家。
 
@@ -38,13 +53,38 @@ INVESTMENT_SYSTEM_PROMPT = """你是 Hermes OS 的投资分析专家。
 - 风险提示醒目（⚠️）
 - 关键指标用 **加粗**
 
-重要规则：
-- 当用户询问**实时股价、指数行情、今日走势**，必须先调用 WebSearch 搜索最新数据
-- 不要说"没有实时数据"——你有 WebSearch 工具可用
-- 用 WebSearch 搜 "茅台股价 2026" 或 "宁德时代股价 今日" 获取实时信息
-- 如果 WebSearch 无结果，再用训练数据，并在回复中说明数据截止时间
-
 当用户询问投资相关问题时，给出专业、全面的分析。"""
+
+
+def _call_blend_direct(
+    prompt: str,
+    system_prompt: str | None = None,
+    max_tokens: int = 4096,
+) -> tuple[bool, str]:
+    """Call blend via OpenAI-compatible endpoint — no real API key needed."""
+    from openai import OpenAI
+
+    client = OpenAI(
+        base_url="http://localhost:8000/v1",
+        api_key="dummy",  # blend 不需要真实key
+    )
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        resp = client.chat.completions.create(
+            model="claude-sonnet-4-6",
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.7,
+        )
+        text = resp.choices[0].message.content or ""
+        return True, text
+    except Exception as e:
+        return False, str(e)
 
 
 class InvestmentAgent:
@@ -61,10 +101,33 @@ class InvestmentAgent:
 
         persona_prefix = persona_block.render() if persona_block else ""
 
+        # Build market data — use Tavily for live stock data
+        tavily = _get_tavily()
+        market_data = ""
+        if tavily and any(kw in message for kw in ["涨", "跌", "股价", "行情", "走势", "投资", "分析", "A股"]):
+            try:
+                queries = [
+                    "贵州茅台股价 今日 2026",
+                    "宁德时代股价 今日 2026",
+                    "A股大盘 上证指数 今日 2026",
+                ]
+                results = []
+                for q in queries:
+                    resp = tavily.search(q, search_depth="advanced")
+                    for r in (resp.get("results") or [])[:2]:
+                        title = r.get("title", "")[:60]
+                        snippet = r.get("content", "")[:200]
+                        results.append(f"**{title}**\n{snippet}\n")
+                if results:
+                    market_data = "\n\n## 📈 最新市场数据\n" + "\n".join(results)
+            except Exception:
+                pass
+
         prompt = f"""## 投资分析任务
 
 ### 用户需求
 {message}
+{market_data}
 
 ### 分析要求
 1. 明确分析对象和分析维度
@@ -82,15 +145,25 @@ class InvestmentAgent:
 
 请直接输出分析报告，不需要解释你将如何分析。"""
 
+        system = persona_prefix + "\n" + INVESTMENT_SYSTEM_PROMPT if persona_prefix else INVESTMENT_SYSTEM_PROMPT
+
+        # Try direct HTTP to blend (avoids claude CLI auth issue on MacBook)
+        try:
+            ok, output = _call_blend_direct(prompt, system)
+            if ok:
+                return AgentResult(success=True, output=output, token_usage=len(output) // 4)
+        except Exception:
+            pass
+
+        # Fall back to invoke() — may work on production LEGION machine
         try:
             result = await invoke(
                 prompt=prompt,
-                system_prompt=persona_prefix + "\n" + INVESTMENT_SYSTEM_PROMPT if persona_prefix else INVESTMENT_SYSTEM_PROMPT,
+                system_prompt=system,
                 cwd=context.get("workspace", "/tmp"),
                 model=context.get("model", "blend"),
                 allowed_tools=context.get("allowed_tools", "Bash,Read,Edit,Write,Glob,Grep,WebSearch"),
             )
-
             if result.ok:
                 return AgentResult(
                     success=True,
@@ -98,9 +171,6 @@ class InvestmentAgent:
                     token_usage=len(result.stdout) // 4,
                 )
             else:
-                return AgentResult(
-                    success=False,
-                    error=result.stderr or "Investment analysis failed",
-                )
+                return AgentResult(success=False, error=result.stderr or "Investment analysis failed")
         except Exception as e:
             return AgentResult(success=False, error=str(e))
