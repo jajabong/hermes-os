@@ -80,39 +80,39 @@ class EventBus:
 
     def __init__(self) -> None:
         self._handlers: dict[str, list[EventHandler]] = {}
-        self._lock = asyncio.Lock()
 
     def subscribe(self, event_type: EventType | str, handler: EventHandler) -> None:
-        """Register a handler for an event type."""
-        key = event_type.value if isinstance(event_type, EventType) else event_type
-        asyncio.create_task(self._subscribe_async(key, handler))
+        """Register a handler for an event type.
 
-    async def _subscribe_async(self, key: str, handler: EventHandler) -> None:
-        async with self._lock:
-            if key not in self._handlers:
-                self._handlers[key] = []
-            if handler not in self._handlers[key]:
-                self._handlers[key].append(handler)
+        Thread-safe for single-threaded asyncio usage — all handlers are
+        registered synchronously before this method returns.
+        """
+        key = event_type.value if isinstance(event_type, EventType) else event_type
+        if key not in self._handlers:
+            self._handlers[key] = []
+        if handler not in self._handlers[key]:
+            self._handlers[key].append(handler)
 
     def unsubscribe(self, event_type: EventType | str, handler: EventHandler) -> None:
-        """Remove a handler from an event type."""
-        key = event_type.value if isinstance(event_type, EventType) else event_type
-        asyncio.create_task(self._unsubscribe_async(key, handler))
+        """Remove a handler from an event type.
 
-    async def _unsubscribe_async(self, key: str, handler: EventHandler) -> None:
-        async with self._lock:
-            if key in self._handlers and handler in self._handlers[key]:
-                self._handlers[key].remove(handler)
+        Thread-safe for single-threaded asyncio usage — all handlers are
+        removed synchronously before this method returns.
+        """
+        key = event_type.value if isinstance(event_type, EventType) else event_type
+        if key in self._handlers and handler in self._handlers[key]:
+            self._handlers[key].remove(handler)
 
     async def publish(self, event: Event) -> None:
         """Publish an event to all registered handlers.
 
         Handlers are called fire-and-forget — exceptions are logged but
         do not propagate or block other handlers.
+
+        Note: In single-threaded asyncio, dict access is atomic — no lock needed.
         """
         key = event.type.value if isinstance(event.type, EventType) else event.type
-        async with self._lock:
-            handlers = list(self._handlers.get(key, []))
+        handlers = list(self._handlers.get(key, []))
 
         if not handlers:
             return
@@ -133,8 +133,7 @@ class EventBus:
     async def publish_sync(self, event: Event) -> None:
         """Publish synchronously (for testing/debugging)."""
         key = event.type.value if isinstance(event.type, EventType) else event.type
-        async with self._lock:
-            handlers = list(self._handlers.get(key, []))
+        handlers = list(self._handlers.get(key, []))
         for handler in handlers:
             try:
                 await handler(event)

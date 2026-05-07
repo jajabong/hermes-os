@@ -287,7 +287,7 @@ class HermesOSHook:
                 self._spawn(self._update_last_seen_bg(user_id_alt))
 
         # Publish USER_MESSAGE event (non-blocking, even if processing fails)
-        self._publish_user_message(context, raw_message)
+        asyncio.create_task(self._publish_user_message(context, raw_message))
 
         router = await self._get_router()
         gateway_event = GatewayEvent(
@@ -359,7 +359,7 @@ class HermesOSHook:
             persona_block = await assembler.assemble()
             gateway_event_obj.text = f"{persona_block.render()}\n\n{gateway_event_obj.text}"
 
-    def _publish_user_message(self, context: dict, message: str) -> None:
+    async def _publish_user_message(self, context: dict, message: str) -> None:
         """Publish a USER_MESSAGE event (non-blocking, never raises)."""
         try:
             event = Event(
@@ -373,8 +373,8 @@ class HermesOSHook:
                     "session_id": context.get("hermes_os_session_id", ""),
                 },
             )
-            # Fire-and-forget: don't block the gateway
-            self._spawn(self._event_bus.publish(event))
+            # Fire-and-forget: spawn as task so we don't block the gateway
+            asyncio.create_task(self._event_bus.publish(event))
         except Exception:
             logger.debug("Failed to publish USER_MESSAGE event")
 
