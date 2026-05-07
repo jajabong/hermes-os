@@ -537,12 +537,18 @@ class DiffLearning:
         return datetime.now().isoformat()
 
     async def _persist_preferences(self) -> None:
-        """Persist preferences to PREFERENCES.md in user brain."""
+        """Persist style learning to STYLE_LEARNING.md in user brain.
+
+        Uses a separate file (not PREFERENCES.md) to avoid conflicting with
+        PreferencesMemory which reads PREFERENCES.md as JSON.
+        DiffLearning tracks content-edit patterns (formal/casual word usage).
+        """
         brain_dir = self.base_dir / self.user_id
         brain_dir.mkdir(parents=True, exist_ok=True)
-        prefs_path = brain_dir / "PREFERENCES.md"
+        # Write to separate file to avoid corrupting PreferencesMemory's JSON format
+        prefs_path = brain_dir / "STYLE_LEARNING.md"
 
-        lines = ["# User Preferences\n", "## Learned Preferences\n"]
+        lines = ["# Style Learning Log\n", "## Learned Patterns\n"]
         for pref in self._preferences:
             lines.append(f"### {pref.artifact_id} - {pref.pattern_type}")
             if pref.keywords:

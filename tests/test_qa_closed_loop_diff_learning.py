@@ -111,7 +111,7 @@ class TestDiffLearning:
             ),
         )
 
-        prefs_path = Path(user_brain_dir) / "alice" / "PREFERENCES.md"
+        prefs_path = Path(user_brain_dir) / "alice" / "STYLE_LEARNING.md"
         assert prefs_path.exists()
 
     @pytest.mark.asyncio
