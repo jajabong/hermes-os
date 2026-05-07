@@ -13,6 +13,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from hermes_os.labor_registry import LaborResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +24,7 @@ class FeishuLabor:
     def __init__(self, **kwargs) -> None:
         pass
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute Feishu delivery task.
 
@@ -35,11 +37,16 @@ class FeishuLabor:
             return await self._execute_m6_delivery(workspace, task_description, meta)
         else:
             logger.warning("FeishuLabor: unknown stage %s", stage)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"Unknown stage: {stage}",
+            )
 
     async def _execute_m6_delivery(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M6_DELIVERY: Push summary card and artifact download link to Feishu."""
         artifact_dir = workspace / "delivery"
         artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -101,11 +108,20 @@ class FeishuLabor:
             )
 
             logger.info("M6_DELIVERY: delivered to Feishu")
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M6_DELIVERY: delivered '{title}' to Feishu",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M6_DELIVERY failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
 
 # ---------------------------------------------------------------------------

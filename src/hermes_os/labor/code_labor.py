@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from hermes_os.claude_code_invocator import invoke
+from hermes_os.labor_registry import LaborResult
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class CodeLabor:
     def __init__(self) -> None:
         pass
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute code generation task.
 
@@ -53,7 +54,7 @@ class CodeLabor:
 
     async def _execute_m1_spec(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M1_SPEC: Generate modification specification from task description."""
         spec_path = meta.get("spec_path", workspace / "src" / "spec.md")
         spec_content = (
@@ -92,17 +93,31 @@ Output ONLY the specification, no additional explanation.
             if result.ok:
                 output_file = workspace / "src" / "modification_spec.md"
                 output_file.write_text(result.stdout, encoding="utf-8")
-                return True
+                return LaborResult(
+                    success=True,
+                    output=f"M1_SPEC completed for task: {task_description[:50]}",
+                    token_usage=0,
+                )
             else:
                 logger.error("M1_SPEC failed: %s", result.stderr)
-                return False
-        except Exception:
+                return LaborResult(
+                    success=False,
+                    output="",
+                    token_usage=0,
+                    error=f"M1_SPEC failed: {result.stderr}",
+                )
+        except Exception as e:
             logger.exception("M1_SPEC exception")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m2_coding(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M2_CODING: Write code based on modification spec."""
         spec_file = workspace / "src" / "modification_spec.md"
         spec_content = (
@@ -140,17 +155,31 @@ Output ONLY the specification, no additional explanation.
 
             if result.ok:
                 output_file.write_text(result.stdout, encoding="utf-8")
-                return True
+                return LaborResult(
+                    success=True,
+                    output=f"M2_CODING generated code: {output_file}",
+                    token_usage=0,
+                )
             else:
                 logger.error("M2_CODING failed: %s", result.stderr)
-                return False
-        except Exception:
+                return LaborResult(
+                    success=False,
+                    output="",
+                    token_usage=0,
+                    error=f"M2_CODING failed: {result.stderr}",
+                )
+        except Exception as e:
             logger.exception("M2_CODING exception")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m3_selftest(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M3_SELFTEST: Execute test cases."""
         test_command = meta.get("test_command", "python -m pytest -v")
 
@@ -173,14 +202,31 @@ Output ONLY the specification, no additional explanation.
             output_file = workspace / "src" / "test_output.txt"
             output_file.write_text(output, encoding="utf-8")
 
-            return passed
-        except Exception:
+            if passed:
+                return LaborResult(
+                    success=True,
+                    output=f"M3_SELFTEST passed: {test_command}",
+                    token_usage=0,
+                )
+            else:
+                return LaborResult(
+                    success=False,
+                    output=f"M3_SELFTEST failed: {test_command}",
+                    token_usage=0,
+                    error=f"Test command returned {proc.returncode}",
+                )
+        except Exception as e:
             logger.exception("M3_SELFTEST exception")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m4_linting(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M4_LINTING: Validate code style and conventions."""
         lint_command = meta.get("lint_command", "python -m ruff check src/")
 
@@ -204,14 +250,31 @@ Output ONLY the specification, no additional explanation.
             output_file = workspace / "src" / "lint_output.txt"
             output_file.write_text(output, encoding="utf-8")
 
-            return passed
-        except Exception:
+            if passed:
+                return LaborResult(
+                    success=True,
+                    output=f"M4_LINTING passed: {lint_command}",
+                    token_usage=0,
+                )
+            else:
+                return LaborResult(
+                    success=False,
+                    output=f"M4_LINTING failed: {lint_command}",
+                    token_usage=0,
+                    error=f"Lint command returned {proc.returncode}",
+                )
+        except Exception as e:
             logger.exception("M4_LINTING exception")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_generic(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """Generic code generation fallback."""
         prompt = f"""
 ## Task: {task_description}
@@ -230,11 +293,25 @@ Generate code to accomplish the task. Output ONLY raw code, no markdown.
             if result.ok:
                 output_file = workspace / "src" / "generated.py"
                 output_file.write_text(result.stdout, encoding="utf-8")
-                return True
+                return LaborResult(
+                    success=True,
+                    output=f"Generic coding completed for task: {task_description[:50]}",
+                    token_usage=0,
+                )
             else:
-                return False
-        except Exception:
-            return False
+                return LaborResult(
+                    success=False,
+                    output="",
+                    token_usage=0,
+                    error=f"Generic coding failed: {result.stderr}",
+                )
+        except Exception as e:
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
 
 # ---------------------------------------------------------------------------

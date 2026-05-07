@@ -20,7 +20,7 @@ class LaborAgentAdapter:
 
     async def invoke(self, request: AgentRequest, context: dict[str, Any]) -> AgentResult:
         """Execute the wrapped labor and map the result to AgentResult."""
-        task = request.params.get("task", "")
+        task = request.params.get("message", "")
         meta = request.params.get("meta", {})
         workspace = Path(context.get("workspace", "/tmp"))
 
@@ -28,7 +28,7 @@ class LaborAgentAdapter:
             result = await self._labor.execute(workspace, task, meta)
             return AgentResult(
                 success=result.success,
-                output=str(result) if result else "",
+                output=result.output if hasattr(result, "output") else str(result),
                 token_usage=getattr(result, "token_usage", 0),
                 error=result.error if not result.success else None,
                 metadata=result.metadata if hasattr(result, "metadata") else {},

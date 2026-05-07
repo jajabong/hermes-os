@@ -15,6 +15,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from hermes_os.labor_registry import LaborResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ class DataLabor:
     def __init__(self, **kwargs) -> None:
         pass
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute data processing task.
 
@@ -45,11 +47,16 @@ class DataLabor:
             return await self._execute_m4_visualize(workspace, task_description, meta)
         else:
             logger.warning("DataLabor: unknown stage %s", stage)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"Unknown stage: {stage}",
+            )
 
     async def _execute_m1_datafetch(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M1_DATAFETCH: Fetch data from GitHub/Feishu/Wiki/Web."""
         source = meta.get("source", "github")
         query = meta.get("query", "")
@@ -69,28 +76,47 @@ class DataLabor:
                 data = await fetch_wiki_data(query, meta)
             else:
                 logger.error("Unknown data source: %s", source)
-                return False
+                return LaborResult(
+                    success=False,
+                    output="",
+                    token_usage=0,
+                    error=f"Unknown data source: {source}",
+                )
 
             # Save raw data
             raw_file = data_dir / "raw.json"
             raw_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M1_DATAFETCH fetched data from {source}: {query[:50]}",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M1_DATAFETCH failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m2_normalize(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M2_NORMALIZE: Clean and normalize raw data."""
         data_dir = workspace / "src" / "data"
         raw_file = data_dir / "raw.json"
 
         if not raw_file.exists():
             logger.error("No raw data found at %s", raw_file)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"No raw data found at {raw_file}",
+            )
 
         try:
             raw_data = json.loads(raw_file.read_text(encoding="utf-8"))
@@ -103,22 +129,36 @@ class DataLabor:
             )
 
             logger.info("M2_NORMALIZE: normalized %d items", len(normalized.get("items", [])))
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M2_NORMALIZE normalized {len(normalized.get('items', []))} items",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M2_NORMALIZE failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m4_visualize(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M4_VISUALIZE: Generate chart specifications from normalized data."""
         data_dir = workspace / "src" / "data"
         norm_file = data_dir / "normalized.json"
 
         if not norm_file.exists():
             logger.error("No normalized data found at %s", norm_file)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"No normalized data found at {norm_file}",
+            )
 
         try:
             normalized = json.loads(norm_file.read_text(encoding="utf-8"))
@@ -133,11 +173,20 @@ class DataLabor:
             )
 
             logger.info("M4_VISUALIZE: generated %d charts", len(charts.get("charts", [])))
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M4_VISUALIZE generated {len(charts.get('charts', []))} charts",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M4_VISUALIZE failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     def _normalize_data(self, raw_data: Any) -> dict[str, Any]:
         """Normalize raw data by removing nulls, structuring fields."""

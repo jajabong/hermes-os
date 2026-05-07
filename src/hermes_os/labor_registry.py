@@ -18,6 +18,7 @@ class LaborResult:
     """Standard result for all Labor Units."""
 
     success: bool
+    output: str = ""
     token_usage: int = 0
     api_cost_usd: float = 0.0
     error: str | None = None

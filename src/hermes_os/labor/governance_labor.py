@@ -17,6 +17,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from hermes_os.labor_registry import LaborResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +28,7 @@ class GovernanceLabor:
     def __init__(self, **kwargs) -> None:
         pass
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute governance task.
 
@@ -48,11 +50,16 @@ class GovernanceLabor:
             return await self._execute_m4_sync(workspace, task_description, meta)
         else:
             logger.warning("GovernanceLabor: unknown stage %s", stage)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"Unknown stage: {stage}",
+            )
 
     async def _execute_m1_detection(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M1_DETECTION: Detect new Wiki writes."""
         wiki_dir = workspace / "wiki" if workspace else Path("wiki")
         wiki_dir.mkdir(parents=True, exist_ok=True)
@@ -76,15 +83,24 @@ class GovernanceLabor:
                 json.dumps(detection_result, ensure_ascii=False, indent=2), encoding="utf-8"
             )
 
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M1_DETECTION: detected {len(entries)} new entries",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M1_DETECTION failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m2_sanitize(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M2_SANITIZE: PII redaction and sanitization."""
         wiki_dir = workspace / "wiki"
         if not wiki_dir.exists():
@@ -108,15 +124,32 @@ class GovernanceLabor:
                 sanitized_count += 1
 
             logger.info("M2_SANITIZE: sanitized %d files", sanitized_count)
-            return sanitized_count > 0
+            if sanitized_count > 0:
+                return LaborResult(
+                    success=True,
+                    output=f"M2_SANITIZE: sanitized {sanitized_count} files",
+                    token_usage=0,
+                )
+            else:
+                return LaborResult(
+                    success=False,
+                    output="No files found to sanitize",
+                    token_usage=0,
+                    error="No .md files found in wiki directory",
+                )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M2_SANITIZE failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m3_promotion(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M3_PROMOTION: Promote to GlobalWiki."""
         wiki_dir = workspace / "wiki"
         if not wiki_dir.exists():
@@ -150,15 +183,24 @@ class GovernanceLabor:
             )
 
             logger.info("M3_PROMOTION: promoted %d entries", promoted)
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M3_PROMOTION: promoted {promoted} entries to GlobalWiki",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M3_PROMOTION failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m4_sync(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M4_SYNC: Update all active indexes."""
         global_wiki_dir = Path("global_wiki")
         global_wiki_dir.mkdir(parents=True, exist_ok=True)
@@ -183,11 +225,20 @@ class GovernanceLabor:
             index_file.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
 
             logger.info("M4_SYNC: indexed %d entries", len(all_entries))
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M4_SYNC: indexed {len(all_entries)} entries",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M4_SYNC failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     def _redact_pii(self, content: str) -> str:
         """Redact PII from content."""

@@ -14,6 +14,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from hermes_os.labor_registry import LaborResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +25,7 @@ class GitHubLabor:
     def __init__(self, remote: str = "origin", **kwargs) -> None:
         self.remote = remote
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute GitHub operations.
 
@@ -42,7 +44,7 @@ class GitHubLabor:
 
     async def _execute_git_merge(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M5_GITMERGE: Create PR and merge to main."""
         branch_name = meta.get("branch_name", "feature/generated")
         commit_message = meta.get("commit_message", "feat: add generated code")
@@ -73,7 +75,11 @@ class GitHubLabor:
             if not pr_result:
                 logger.warning("PR creation failed or gh CLI not available")
                 # Still return True if commit/push succeeded
-                return True
+                return LaborResult(
+                    success=True,
+                    output=f"M5_GITMERGE: branch {branch_name} created and pushed, PR creation skipped",
+                    token_usage=0,
+                )
 
             # 7. Auto-merge if enabled
             if auto_merge:
@@ -85,11 +91,20 @@ class GitHubLabor:
                 f"Branch: {branch_name}\nPR: created\nAuto-merge: {auto_merge}", encoding="utf-8"
             )
 
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M5_GITMERGE: branch {branch_name} created, PR created, auto_merge={auto_merge}",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M5_GITMERGE exception")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _run_git(self, workspace: Path, args: list[str]) -> subprocess.CompletedProcess:
         """Run a git command."""
@@ -160,7 +175,11 @@ class GitHubLabor:
 
     async def _execute_generic(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """Generic git operation fallback."""
         logger.info("GitHubLabor generic operation")
-        return True
+        return LaborResult(
+            success=True,
+            output=f"GitHubLabor generic operation completed for: {task_description[:50]}",
+            token_usage=0,
+        )

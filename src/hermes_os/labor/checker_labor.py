@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from hermes_os.labor_registry import LaborResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,11 +22,11 @@ class CheckerLabor:
         # Accept any kwargs for registry compatibility
         pass
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute quality checks.
 
-        Returns True if quality passes, False if it fails.
+        Returns LaborResult with success=True if quality passes, False if it fails.
         """
         stage = meta.get("stage", "M5_AUDIT")
         logger.info("CheckerLabor executing stage: %s", stage)
@@ -44,14 +46,28 @@ class CheckerLabor:
 
             if passed:
                 logger.info("CheckerLabor: quality passed")
+                return LaborResult(
+                    success=True,
+                    output=f"CheckerLabor quality passed for stage: {stage}",
+                    token_usage=0,
+                )
             else:
                 logger.warning("CheckerLabor: quality failed")
+                return LaborResult(
+                    success=False,
+                    output="Quality check failed",
+                    token_usage=0,
+                    error="Quality checks did not pass",
+                )
 
-            return passed
-
-        except Exception:
+        except Exception as e:
             logger.exception("CheckerLabor exception")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     def _check_quality(self, content: str, meta: dict[str, Any]) -> bool:
         """Run basic quality checks."""

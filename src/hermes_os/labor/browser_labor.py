@@ -16,6 +16,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from hermes_os.labor_registry import LaborResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +27,7 @@ class BrowserLabor:
     def __init__(self, **kwargs) -> None:
         pass
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute browser automation task.
 
@@ -47,11 +49,16 @@ class BrowserLabor:
             return await self._execute_m4_verification(workspace, task_description, meta)
         else:
             logger.warning("BrowserLabor: unknown stage %s", stage)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"Unknown stage: {stage}",
+            )
 
     async def _execute_m1_statedauth(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M1_STATEDAUTH: Check login state (Session/Cookie)."""
         platform = meta.get("platform", "unknown")
         delivery_dir = workspace / "delivery"
@@ -68,15 +75,46 @@ class BrowserLabor:
                         "platform": platform,
                     },
                 )
-                return result is not None and "logged_in" in str(result).lower()
-            return await check_login_state(platform, meta)
-        except Exception:
+                logged_in = result is not None and "logged_in" in str(result).lower()
+                if logged_in:
+                    return LaborResult(
+                        success=True,
+                        output=f"M1_STATEDAUTH: logged in to {platform}",
+                        token_usage=0,
+                    )
+                else:
+                    return LaborResult(
+                        success=False,
+                        output="",
+                        token_usage=0,
+                        error="Login check failed",
+                    )
+            result = await check_login_state(platform, meta)
+            if result:
+                return LaborResult(
+                    success=True,
+                    output=f"M1_STATEDAUTH: logged in to {platform}",
+                    token_usage=0,
+                )
+            else:
+                return LaborResult(
+                    success=False,
+                    output="",
+                    token_usage=0,
+                    error="Login check returned False",
+                )
+        except Exception as e:
             logger.exception("M1_STATEDAUTH failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m2_formfilling(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M2_FORMFILLING: Automate form filling."""
         platform = meta.get("platform", "unknown")
         form_fields = meta.get("form_fields", {})
@@ -99,15 +137,46 @@ class BrowserLabor:
                         "fields": form_fields,
                     },
                 )
-                return result is not None and "filled" in str(result).lower()
-            return await fill_form(platform, form_fields, meta)
-        except Exception:
+                filled = result is not None and "filled" in str(result).lower()
+                if filled:
+                    return LaborResult(
+                        success=True,
+                        output=f"M2_FORMFILLING: filled form on {platform}",
+                        token_usage=0,
+                    )
+                else:
+                    return LaborResult(
+                        success=False,
+                        output="",
+                        token_usage=0,
+                        error="Form filling failed",
+                    )
+            result = await fill_form(platform, form_fields, meta)
+            if result:
+                return LaborResult(
+                    success=True,
+                    output=f"M2_FORMFILLING: filled form on {platform}",
+                    token_usage=0,
+                )
+            else:
+                return LaborResult(
+                    success=False,
+                    output="",
+                    token_usage=0,
+                    error="Form filling returned False",
+                )
+        except Exception as e:
             logger.exception("M2_FORMFILLING failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m3_upload(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M3_UPLOAD: Upload files to platform."""
         platform = meta.get("platform", "unknown")
         file_path = meta.get("file_path", "")
@@ -126,16 +195,46 @@ class BrowserLabor:
                         "file_path": file_path,
                     },
                 )
-                return result is not None and "url" in str(result).lower()
+                has_url = result is not None and "url" in str(result).lower()
+                if has_url:
+                    return LaborResult(
+                        success=True,
+                        output=f"M3_UPLOAD: uploaded {file_path} to {platform}",
+                        token_usage=0,
+                    )
+                else:
+                    return LaborResult(
+                        success=False,
+                        output="",
+                        token_usage=0,
+                        error="File upload failed",
+                    )
             upload_url = await upload_file(platform, file_path, workspace, meta)
-            return upload_url is not None
-        except Exception:
+            if upload_url is not None:
+                return LaborResult(
+                    success=True,
+                    output=f"M3_UPLOAD: uploaded to {upload_url}",
+                    token_usage=0,
+                )
+            else:
+                return LaborResult(
+                    success=False,
+                    output="",
+                    token_usage=0,
+                    error="upload_file returned None",
+                )
+        except Exception as e:
             logger.exception("M3_UPLOAD failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m4_verification(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M4_VERIFICATION: Verify via UI state/screenshot."""
         platform = meta.get("platform", "unknown")
         expected_text = meta.get("expected_text", "")
@@ -154,11 +253,42 @@ class BrowserLabor:
                         "expected_text": expected_text,
                     },
                 )
-                return result is not None and "verified" in str(result).lower()
-            return await verify_ui_state(platform, expected_text, meta)
-        except Exception:
+                verified = result is not None and "verified" in str(result).lower()
+                if verified:
+                    return LaborResult(
+                        success=True,
+                        output=f"M4_VERIFICATION: verified {platform}",
+                        token_usage=0,
+                    )
+                else:
+                    return LaborResult(
+                        success=False,
+                        output="",
+                        token_usage=0,
+                        error="UI verification failed",
+                    )
+            result = await verify_ui_state(platform, expected_text, meta)
+            if result:
+                return LaborResult(
+                    success=True,
+                    output=f"M4_VERIFICATION: verified {platform}",
+                    token_usage=0,
+                )
+            else:
+                return LaborResult(
+                    success=False,
+                    output="",
+                    token_usage=0,
+                    error="UI verification returned False",
+                )
+        except Exception as e:
             logger.exception("M4_VERIFICATION failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
 
 # ---------------------------------------------------------------------------

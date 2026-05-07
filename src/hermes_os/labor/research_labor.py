@@ -13,6 +13,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from hermes_os.labor_registry import LaborResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +24,7 @@ class ResearchLabor:
     def __init__(self, **kwargs) -> None:
         pass
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute reasoning/analysis task.
 
@@ -30,7 +32,7 @@ class ResearchLabor:
         - M2_RESEARCH: Retrieve context from GlobalWiki and PrivateWiki (content assembly)
         - M3_REASONING: Compute metrics and analyze patterns (intelligence)
         """
-        stage = meta.get("stage", "M3_REASONING")
+        stage = meta.get("stage", "M2_RESEARCH")
 
         if stage == "M2_RESEARCH":
             return await self._execute_m2_research(workspace, task_description, meta)
@@ -38,11 +40,16 @@ class ResearchLabor:
             return await self._execute_m3_reasoning(workspace, task_description, meta)
         else:
             logger.warning("ResearchLabor: unknown stage %s", stage)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"Unknown stage: {stage}",
+            )
 
     async def _execute_m2_research(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M2_RESEARCH: Retrieve context from GlobalWiki and PrivateWiki."""
         wiki_dir = workspace / "wiki" if workspace else Path("wiki")
         wiki_dir.mkdir(parents=True, exist_ok=True)
@@ -53,7 +60,7 @@ class ResearchLabor:
             # Mock retrieval - in production, would query GlobalWiki/PrivateWiki
             research_data = {
                 "source": "wiki",
-                "context_ retrieved": True,
+                "context_retrieved": True,
                 "query": task_description,
                 "references": [
                     {"title": "Reference 1", "url": "https://wiki.example.com/ref1"},
@@ -68,22 +75,36 @@ class ResearchLabor:
             )
 
             logger.info("M2_RESEARCH: retrieved %d references", len(research_data["references"]))
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M2_RESEARCH retrieved {len(research_data['references'])} references for: {task_description[:50]}",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M2_RESEARCH failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     async def _execute_m3_reasoning(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M3_REASONING: Compute metrics and analyze patterns."""
         data_dir = workspace / "src" / "data"
         norm_file = data_dir / "normalized.json"
 
         if not norm_file.exists():
             logger.error("No normalized data found at %s", norm_file)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"No normalized data found at {norm_file}",
+            )
 
         logger.info("ResearchLabor M3_REASONING: analyzing patterns")
 
@@ -98,11 +119,20 @@ class ResearchLabor:
             )
 
             logger.info("M3_REASONING: computed %d metrics", len(metrics.get("metrics", [])))
-            return True
+            return LaborResult(
+                success=True,
+                output=f"M3_REASONING computed {len(metrics.get('metrics', []))} metrics for: {task_description[:50]}",
+                token_usage=0,
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M3_REASONING failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     def _compute_metrics(self, data: dict[str, Any]) -> dict[str, Any]:
         """Compute metrics from normalized data."""

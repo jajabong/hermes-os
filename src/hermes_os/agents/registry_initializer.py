@@ -1,17 +1,19 @@
-"""Agent registry initialization — wires all agents into the VerticalAgent registry."""
+"""Agent registry initialization — wires all agents into the VerticalAgent registry.
+
+Architecture (第一性原理):
+- ChiefAgent = 纯调度器(接收请求 → 分解 → 调度功能Agent)
+- 6 个功能 Agent = Research/Code/Browser/Content/Data/Intelligence
+- 无领域型 Agent (Investment/Legal/Education...全部归约到功能Agent)
+"""
 
 from __future__ import annotations
 
-from hermes_os.agents.book_pipeline_agent import BookPipelineAgent
+from pathlib import Path
+from typing import Any
+
 from hermes_os.agents.chief_agent_adapter import ChiefAgentAdapter
-from hermes_os.agents.deploy_agent import DeployAgent
-from hermes_os.agents.education_agent import EducationAgent
-from hermes_os.agents.investment_agent import InvestmentAgent
 from hermes_os.agents.intelligence_agent import IntelligenceAgent
 from hermes_os.agents.labor_agent_adapter import LaborAgentAdapter
-from hermes_os.agents.legal_agent import LegalAgent
-from hermes_os.agents.review_agent import ReviewAgent
-from hermes_os.agents.test_agent import TestAgent
 from hermes_os.labor.browser_labor import BrowserLabor
 from hermes_os.labor.checker_labor import CheckerLabor
 from hermes_os.labor.code_labor import CodeLabor
@@ -22,42 +24,37 @@ from hermes_os.labor.format_labor import FormatLabor
 from hermes_os.labor.github_labor import GitHubLabor
 from hermes_os.labor.governance_labor import GovernanceLabor
 from hermes_os.labor.research_labor import ResearchLabor
-from hermes_os.vertical_agent import get_agent_registry
+from hermes_os.vertical_agent import AgentRequest, AgentResult, get_agent_registry
 
 
 def initialize_agents() -> None:
     """Register all agents with the global AgentRegistry.
 
-    Iron Legion: 10 professional domain agents + 8 tool执行 agents.
+    6 functional agents (按功能分工, 不是按领域):
+      ChiefAgent      — 调度中枢
+      ResearchAgent  — 研究/分析/实时数据
+      CodeAgent      — 代码生成/debug/测试
+      ContentAgent   — 写作/文案
+      BrowserAgent   — 浏览器自动化
+      DataAgent      — 数据处理
+      IntelligenceAgent — 实时数据(被ResearchAgent调用)
     """
     registry = get_agent_registry()
 
-    # Coordinator
+    # Coordinator — 纯调度，不生成内容
     registry.register("ChiefAgent", ChiefAgentAdapter())
 
-    # === Iron Legion: Professional Domain Agents ===
-    # These agents have real invoke() implementations with domain-specific prompts
-    registry.register("InvestmentAgent", InvestmentAgent())
-    registry.register("LegalAgent", LegalAgent())
-    registry.register("EducationAgent", EducationAgent())
-    registry.register("DeployAgent", DeployAgent())
-    registry.register("ReviewAgent", ReviewAgent())
-    registry.register("TestAgent", TestAgent())
-    registry.register("BookPipelineAgent", BookPipelineAgent())
-    registry.register("IntelligenceAgent", IntelligenceAgent())  # Shared live data for all agents
-
-    # === Execution Agents: Code/Content/Research ===
-    # Core execution agents with full invoke() implementations
+    # === 6 Functional Agents ===
+    registry.register("ResearchAgent", ResearchAgent())
     registry.register("CodeAgent", CodeAgent())
     registry.register("ContentAgent", ContentAgent())
-    registry.register("ResearchAgent", ResearchAgent())
+    registry.register("BrowserAgent", LaborAgentAdapter(BrowserLabor(), "BrowserAgent"))
+    registry.register("DataAgent", LaborAgentAdapter(DataLabor(), "DataAgent"))
+    registry.register("IntelligenceAgent", IntelligenceAgent())  # 被ResearchAgent内部调用
 
-    # === Tool Agents: Labor-backed (工具执行器) ===
-    # These wrap tool-specific labors — they are executors, not strategists
+    # === Tool Agents (工具执行器, 执行特定操作) ===
     registry.register("GitHubAgent", LaborAgentAdapter(GitHubLabor(), "GitHubAgent"))
     registry.register("CheckerAgent", LaborAgentAdapter(CheckerLabor(), "CheckerAgent"))
-    registry.register("DataAgent", LaborAgentAdapter(DataLabor(), "DataAgent"))
-    registry.register("BrowserAgent", LaborAgentAdapter(BrowserLabor(), "BrowserAgent"))
     registry.register("FormatAgent", LaborAgentAdapter(FormatLabor(), "FormatAgent"))
     registry.register("FeishuAgent", LaborAgentAdapter(FeishuLabor(), "FeishuAgent"))
     registry.register("GovernanceAgent", LaborAgentAdapter(GovernanceLabor(), "GovernanceAgent"))
@@ -83,8 +80,8 @@ class CodeAgent:
             result = await labor.execute(workspace, task, meta)
             return AgentResult(
                 success=result.success,
-                output=str(result.output) if hasattr(result, "output") else str(result),
-                token_usage=getattr(result, "token_usage", 0),
+                output=result.output,
+                token_usage=result.token_usage,
                 error=result.error if not result.success else None,
             )
         except Exception as e:
@@ -111,8 +108,8 @@ class ContentAgent:
             result = await labor.execute(workspace, task, meta)
             return AgentResult(
                 success=result.success,
-                output=str(result.output) if hasattr(result, "output") else str(result),
-                token_usage=getattr(result, "token_usage", 0),
+                output=result.output,
+                token_usage=result.token_usage,
                 error=result.error if not result.success else None,
             )
         except Exception as e:
@@ -120,27 +117,67 @@ class ContentAgent:
 
 
 class ResearchAgent:
-    """Research and analysis vertical agent.
+    """Research + real-time intelligence agent.
 
-    Wraps ResearchLabor with direct invoke().
+    Embeds IntelligenceAgent to fetch live data (stock prices, news, weather)
+    before conducting research. This is the PRIMARY agent for all research,
+    analysis, and investment-related queries.
+
+    Flow:
+    1. Check if task needs real-time data (stock/news/search)
+    2. Fetch via IntelligenceAgent if needed
+    3. Execute research via ResearchLabor
+    4. Combine and return results
     """
 
     name = "ResearchAgent"
 
     async def invoke(self, request: AgentRequest, context: dict[str, Any]) -> AgentResult:
         from hermes_os.labor.research_labor import ResearchLabor
-        labor = ResearchLabor()
+        from hermes_os.agents.intelligence_agent import _cached_search
+
         task = request.params.get("message", "")
         meta = request.params.get("meta", {})
         workspace = context.get("workspace") or "/tmp"
+        user_id = context.get("user_id", "anonymous") if context else "anonymous"
         if isinstance(workspace, str):
             workspace = Path(workspace)
+
+        # Step 1: Check if real-time data is needed
+        intelligence_context = ""
+        needs_realtime = any(kw in task.lower() for kw in [
+            "投资", "股票", "股价", "行情", "分析",
+            "新闻", "最新", "今日", "当前",
+        ])
+
+        if needs_realtime:
+            try:
+                # Extract potential search queries from task
+                search_query = task[:100]
+                intel_data = _cached_search(user_id, search_query, max_results=5)
+                if intel_data.get("found"):
+                    snippets = [r["snippet"] for r in intel_data.get("results", [])]
+                    intelligence_context = (
+                        "\n\n## 📡 实时情报 (来自 Tavily)\n" +
+                        "\n\n".join(f"- {s[:150]}" for s in snippets[:3])
+                    )
+            except Exception:
+                pass  # IntelligenceAgent unavailable, continue without it
+
+        # Step 2: Build enhanced prompt with real-time data
+        if intelligence_context:
+            enhanced_task = f"{task}\n{intelligence_context}"
+        else:
+            enhanced_task = task
+
+        # Step 3: Execute research
         try:
-            result = await labor.execute(workspace, task, meta)
+            labor = ResearchLabor()
+            result = await labor.execute(workspace, enhanced_task, meta)
             return AgentResult(
                 success=result.success,
-                output=str(result.output) if hasattr(result, "output") else str(result),
-                token_usage=getattr(result, "token_usage", 0),
+                output=result.output,
+                token_usage=result.token_usage,
                 error=result.error if not result.success else None,
             )
         except Exception as e:

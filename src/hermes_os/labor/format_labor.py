@@ -15,6 +15,8 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from hermes_os.labor_registry import LaborResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ class FormatLabor:
     def __init__(self, **kwargs) -> None:
         pass
 
-    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> bool:
+    async def execute(self, workspace: Path, task_description: str, meta: dict[str, Any]) -> LaborResult:
         """
         Execute formatting/rendering task.
 
@@ -37,11 +39,16 @@ class FormatLabor:
             return await self._execute_m4_rendering(workspace, task_description, meta)
         else:
             logger.warning("FormatLabor: unknown stage %s", stage)
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=f"Unknown stage: {stage}",
+            )
 
     async def _execute_m4_rendering(
         self, workspace: Path, task_description: str, meta: dict[str, Any]
-    ) -> bool:
+    ) -> LaborResult:
         """M4_RENDERING: Format content into final output (MD/DOCX/PDF)."""
         output_format = meta.get("format", "markdown")
         artifact_dir = workspace / "delivery"
@@ -68,14 +75,28 @@ class FormatLabor:
                 output_path.write_text(rendered, encoding="utf-8")
 
                 logger.info("M4_RENDERING: rendered to %s", output_path)
-                return True
+                return LaborResult(
+                    success=True,
+                    output=f"M4_RENDERING rendered to {output_path}",
+                    token_usage=0,
+                )
 
             logger.warning("M4_RENDERING: no content found to render")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error="No content found to render",
+            )
 
-        except Exception:
+        except Exception as e:
             logger.exception("M4_RENDERING failed")
-            return False
+            return LaborResult(
+                success=False,
+                output="",
+                token_usage=0,
+                error=str(e),
+            )
 
     def _render_content(self, content: str, format: str, meta: dict[str, Any]) -> str:
         """Render content to specified format."""
