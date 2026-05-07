@@ -38,6 +38,8 @@ INVESTMENT_SYSTEM_PROMPT = """你是 Hermes OS 的投资分析专家。
 - 风险提示醒目（⚠️）
 - 关键指标用 **加粗**
 
+重要：当需要实时数据（如股价、指数、财经新闻）时，**必须主动调用 WebSearch 工具搜索最新信息**，不要仅依赖训练数据。
+
 当用户询问投资相关问题时，给出专业、全面的分析。"""
 
 
@@ -81,7 +83,8 @@ class InvestmentAgent:
                 prompt=prompt,
                 system_prompt=persona_prefix + "\n" + INVESTMENT_SYSTEM_PROMPT if persona_prefix else INVESTMENT_SYSTEM_PROMPT,
                 cwd=context.get("workspace", "/tmp"),
-                model=context.get("model", "sonnet"),
+                model=context.get("model", "blend"),
+                allowed_tools=context.get("allowed_tools", "Bash,Read,Edit,Write,Glob,Grep,WebSearch"),
             )
 
             if result.ok:
