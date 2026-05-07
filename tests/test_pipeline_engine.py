@@ -559,6 +559,189 @@ class TestParallelChapterLabor:
         assert result.success is True
 
 
+class TestParallelChapterLaborTaskScheduler:
+    """TDD: ParallelChapterLabor should optionally delegate to TaskScheduler."""
+
+    @pytest.mark.asyncio
+    async def test_delegates_to_scheduler_when_available(self, temp_dir: Path) -> None:
+        """When task_scheduler is set, ParallelChapterLabor uses it instead of invoke()."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from hermes_os.pipeline_engine import (
+            ParallelChapterLabor,
+            PipelineWorkspace,
+        )
+
+        # Create workspace with outline
+        ws_root = temp_dir / "artifacts" / "scheduler-test-001"
+        ws_root.mkdir(parents=True)
+        (ws_root / "src").mkdir()
+
+        outline_content = """## 大纲
+
+1. **第一章** — 内容1
+2. **第二章** — 内容2
+"""
+        (ws_root / "src" / "01_outline.md").write_text(outline_content, "utf-8")
+
+        ws = PipelineWorkspace(
+            task_id="scheduler-test-001",
+            pipeline_name="book",
+            root_path=ws_root,
+        )
+        ws.stage_statuses = {}
+
+        # Mock TaskScheduler returning completed tasks
+        mock_task1 = MagicMock()
+        mock_task1.task_id = "task-001"
+        mock_task1.status = MagicMock()
+        mock_task1.status.value = "COMPLETED"
+        mock_task1.result = '{"output": "# Chapter 1 content"}'
+
+        mock_task2 = MagicMock()
+        mock_task2.task_id = "task-002"
+        mock_task2.status = MagicMock()
+        mock_task2.status.value = "COMPLETED"
+        mock_task2.result = '{"output": "# Chapter 2 content"}'
+
+        mock_scheduler = MagicMock()
+        mock_scheduler.create_task = AsyncMock(side_effect=[mock_task1, mock_task2])
+        mock_scheduler.get_task = AsyncMock(side_effect=[mock_task1, mock_task2])
+
+        labor = ParallelChapterLabor(
+            max_concurrent=3,
+            failure_threshold=0.5,
+            task_scheduler=mock_scheduler,
+        )
+
+        # Patch invoke to track if it's called (it shouldn't be)
+        with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = MagicMock(stdout="should not be called")
+            result = await labor.execute(
+                description="Write chapters",
+                input_artifact="01_outline.md",
+                workspace=ws,
+                context={"topic": "Test Book"},
+            )
+
+        # Scheduler should have been used (create_task called twice, once per chapter)
+        assert mock_scheduler.create_task.call_count == 2
+        # invoke() should NOT have been called (scheduler path)
+        assert mock_invoke.call_count == 0
+        assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_gather_when_no_scheduler(self, temp_dir: Path) -> None:
+        """When no task_scheduler, ParallelChapterLabor uses asyncio.gather (existing behavior)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from hermes_os.pipeline_engine import (
+            ParallelChapterLabor,
+            PipelineWorkspace,
+        )
+
+        ws_root = temp_dir / "artifacts" / "gather-test-001"
+        ws_root.mkdir(parents=True)
+        (ws_root / "src").mkdir()
+
+        outline_content = """## 大纲
+
+1. **第一章** — 内容1
+"""
+        (ws_root / "src" / "01_outline.md").write_text(outline_content, "utf-8")
+
+        ws = PipelineWorkspace(
+            task_id="gather-test-001",
+            pipeline_name="book",
+            root_path=ws_root,
+        )
+        ws.stage_statuses = {}
+
+        mock_invoke_result = MagicMock()
+        mock_invoke_result.stdout = "# Chapter Content\n\nLorem ipsum."
+
+        # NO task_scheduler passed
+        labor = ParallelChapterLabor(max_concurrent=3, failure_threshold=0.5)
+
+        with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = mock_invoke_result
+            result = await labor.execute(
+                description="Write chapters",
+                input_artifact="01_outline.md",
+                workspace=ws,
+                context={"topic": "Test Book"},
+            )
+
+        # Should use invoke directly (asyncio.gather path)
+        assert result.success is True
+        mock_invoke.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_aggregates_chapter_results_from_scheduler(self, temp_dir: Path) -> None:
+        """Scheduler delegate should aggregate chapter results correctly."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from hermes_os.pipeline_engine import (
+            ParallelChapterLabor,
+            PipelineWorkspace,
+        )
+
+        ws_root = temp_dir / "artifacts" / "aggregate-test-001"
+        ws_root.mkdir(parents=True)
+        (ws_root / "src").mkdir()
+
+        outline_content = """## 大纲
+
+1. **第一章** — 内容1
+2. **第二章** — 内容2
+"""
+        (ws_root / "src" / "01_outline.md").write_text(outline_content, "utf-8")
+
+        ws = PipelineWorkspace(
+            task_id="aggregate-test-001",
+            pipeline_name="book",
+            root_path=ws_root,
+        )
+        ws.stage_statuses = {}
+
+        # Mock TaskScheduler returning completed tasks with results
+        mock_task1 = MagicMock()
+        mock_task1.task_id = "task-001"
+        mock_task1.status = MagicMock()
+        mock_task1.status.value = "COMPLETED"
+        mock_task1.result = '{"output": "# Chapter 1 content"}'
+
+        mock_task2 = MagicMock()
+        mock_task2.task_id = "task-002"
+        mock_task2.status = MagicMock()
+        mock_task2.status.value = "COMPLETED"
+        mock_task2.result = '{"output": "# Chapter 2 content"}'
+
+        mock_scheduler = MagicMock()
+        mock_scheduler.create_task = AsyncMock(side_effect=[mock_task1, mock_task2])
+        mock_scheduler.get_task = AsyncMock(side_effect=[mock_task1, mock_task2, mock_task1, mock_task2])
+
+        labor = ParallelChapterLabor(
+            max_concurrent=3,
+            failure_threshold=0.5,
+            task_scheduler=mock_scheduler,
+        )
+
+        with patch("hermes_os.claude_code_invocator.invoke", new_callable=AsyncMock) as mock_invoke:
+            mock_invoke.return_value = MagicMock(stdout="should not be called")
+            result = await labor.execute(
+                description="Write chapters",
+                input_artifact="01_outline.md",
+                workspace=ws,
+                context={"topic": "Test Book"},
+            )
+
+        # Both chapters should succeed
+        assert result.success is True
+        assert result.chapter_results is not None
+        assert len(result.chapter_results) == 2
+
+
 class TestPipelineStageParallel:
     """Tests for parallel fields in PipelineStage and from_yaml parsing."""
 

@@ -420,10 +420,12 @@ class ParallelChapterLabor:
         self,
         max_concurrent: int = 5,
         failure_threshold: float = 0.5,
+        task_scheduler: Any | None = None,
     ) -> None:
         self._semaphore = asyncio.Semaphore(value=max_concurrent)
         self._max_concurrent = max_concurrent
         self._failure_threshold = failure_threshold
+        self._task_scheduler = task_scheduler
 
     async def execute(
         self,
@@ -485,61 +487,15 @@ class ParallelChapterLabor:
 
             chapter_results: dict[int, ChapterWriteResult] = {}
 
-            async def write_one_chapter(task: ChapterWriteTask) -> ChapterWriteResult:
-                async with self._semaphore:
-                    chapter_start = time.monotonic()
-                    try:
-                        system_prompt = (
-                            "You are a professional book author. "
-                            "Write a complete, engaging book chapter. "
-                            "Use markdown formatting. Do not include placeholder text. "
-                            "Generate substantial content."
-                        )
-
-                        result = await invoke(
-                            prompt=task.prompt,
-                            max_turns=context.get("max_turns", 15),
-                            timeout_sec=context.get("chapter_timeout_sec", 180),
-                            system_prompt=system_prompt,
-                        )
-
-                        filename = f"ch{task.chapter_number:02d}_{sanitize_filename(task.chapter_title)}.md"
-                        output_path = workspace.src_path / filename
-                        output_path.write_text(result.stdout, "utf-8")
-
-                        return ChapterWriteResult(
-                            chapter_number=task.chapter_number,
-                            chapter_title=task.chapter_title,
-                            success=True,
-                            output_artifact=filename,
-                            output_content=result.stdout,
-                            duration_seconds=time.monotonic() - chapter_start,
-                        )
-                    except Exception as e:
-                        return ChapterWriteResult(
-                            chapter_number=task.chapter_number,
-                            chapter_title=task.chapter_title,
-                            success=False,
-                            error=str(e),
-                            duration_seconds=time.monotonic() - chapter_start,
-                        )
-
-            results = await asyncio.gather(
-                *[write_one_chapter(task) for task in tasks],
-                return_exceptions=True,
-            )
-
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    task = tasks[i]
-                    chapter_results[task.chapter_number] = ChapterWriteResult(
-                        chapter_number=task.chapter_number,
-                        chapter_title=task.chapter_title,
-                        success=False,
-                        error=str(result),
-                    )
-                else:
-                    chapter_results[result.chapter_number] = result
+            # Delegate to TaskScheduler if available, otherwise use asyncio.gather
+            if self._task_scheduler:
+                chapter_results = await self._execute_via_scheduler(
+                    tasks, workspace, context
+                )
+            else:
+                chapter_results = await self._execute_via_gather(
+                    tasks, workspace, context
+                )
 
             total = len(chapter_results)
             failed = sum(1 for r in chapter_results.values() if not r.success)
@@ -577,6 +533,196 @@ class ParallelChapterLabor:
                 error=f"ParallelChapterLabor exception: {str(e)}",
                 duration_seconds=time.monotonic() - start,
             )
+
+    async def _execute_via_gather(
+        self,
+        tasks: list[ChapterWriteTask],
+        workspace: PipelineWorkspace,
+        context: dict[str, Any],
+    ) -> dict[int, ChapterWriteResult]:
+        """Execute chapters via asyncio.gather (original behavior)."""
+        import time
+
+        from hermes_os.claude_code_invocator import invoke
+        from hermes_os.outline_splitter import sanitize_filename
+
+        async def write_one_chapter(task: ChapterWriteTask) -> ChapterWriteResult:
+            async with self._semaphore:
+                chapter_start = time.monotonic()
+                try:
+                    system_prompt = (
+                        "You are a professional book author. "
+                        "Write a complete, engaging book chapter. "
+                        "Use markdown formatting. Do not include placeholder text. "
+                        "Generate substantial content."
+                    )
+
+                    result = await invoke(
+                        prompt=task.prompt,
+                        max_turns=context.get("max_turns", 15),
+                        timeout_sec=context.get("chapter_timeout_sec", 180),
+                        system_prompt=system_prompt,
+                    )
+
+                    filename = f"ch{task.chapter_number:02d}_{sanitize_filename(task.chapter_title)}.md"
+                    output_path = workspace.src_path / filename
+                    output_path.write_text(result.stdout, "utf-8")
+
+                    return ChapterWriteResult(
+                        chapter_number=task.chapter_number,
+                        chapter_title=task.chapter_title,
+                        success=True,
+                        output_artifact=filename,
+                        output_content=result.stdout,
+                        duration_seconds=time.monotonic() - chapter_start,
+                    )
+                except Exception as e:
+                    return ChapterWriteResult(
+                        chapter_number=task.chapter_number,
+                        chapter_title=task.chapter_title,
+                        success=False,
+                        error=str(e),
+                        duration_seconds=time.monotonic() - chapter_start,
+                    )
+
+        results = await asyncio.gather(
+            *[write_one_chapter(task) for task in tasks],
+            return_exceptions=True,
+        )
+
+        chapter_results: dict[int, ChapterWriteResult] = {}
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                task = tasks[i]
+                chapter_results[task.chapter_number] = ChapterWriteResult(
+                    chapter_number=task.chapter_number,
+                    chapter_title=task.chapter_title,
+                    success=False,
+                    error=str(result),
+                )
+            else:
+                chapter_results[result.chapter_number] = result
+
+        return chapter_results
+
+    async def _execute_via_scheduler(
+        self,
+        tasks: list[ChapterWriteTask],
+        workspace: PipelineWorkspace,
+        context: dict[str, Any],
+    ) -> dict[int, ChapterWriteResult]:
+        """Execute chapters via TaskScheduler (persistent + Guardian retry).
+
+        Each chapter is submitted as a Task to TaskScheduler, enabling:
+        - Persistent task state across restarts
+        - Guardian-based retry and correction
+        - Skill injection per chapter task
+        - Team context awareness
+        """
+        import json
+        import time
+
+        from hermes_os.outline_splitter import sanitize_filename
+
+        scheduler = self._task_scheduler
+        topic = context.get("topic", "Untitled Book")
+        chapter_results: dict[int, ChapterWriteResult] = {}
+
+        # Submit all chapter tasks to TaskScheduler concurrently
+        async def submit_and_wait(task: ChapterWriteTask) -> ChapterWriteResult:
+            chapter_start = time.monotonic()
+            try:
+                # Build system prompt for chapter writing
+                system_prompt = (
+                    "You are a professional book author. "
+                    "Write a complete, engaging book chapter. "
+                    "Use markdown formatting. Do not include placeholder text. "
+                    "Generate substantial content."
+                )
+
+                # Create task in scheduler
+                created = await scheduler.create_task(
+                    user_id=context.get("user_id", "system"),
+                    title=f"[Chapter {task.chapter_number}] {task.chapter_title}",
+                    description=task.prompt,
+                    priority=2,  # NORMAL
+                    metadata={
+                        "pipeline_name": "Book Authoring Pipeline",
+                        "stage_name": "write_chapters",
+                        "chapter_number": task.chapter_number,
+                        "chapter_title": task.chapter_title,
+                        "topic": topic,
+                        "system_prompt": system_prompt,
+                        "max_turns": context.get("max_turns", 15),
+                        "timeout_sec": context.get("chapter_timeout_sec", 180),
+                    },
+                )
+
+                # Wait for completion with polling
+                max_wait = context.get("chapter_timeout_sec", 180)
+                poll_interval = 5
+                elapsed = 0
+
+                while elapsed < max_wait:
+                    refreshed = await scheduler.get_task(created.task_id)
+                    if refreshed and refreshed.status.value in ("COMPLETED", "FAILED", "CANCELLED"):
+                        break
+                    await asyncio.sleep(poll_interval)
+                    elapsed += poll_interval
+
+                # Write artifact from result
+                if refreshed and refreshed.status.value == "COMPLETED":
+                    result_data = json.loads(refreshed.result or "{}")
+                    filename = f"ch{task.chapter_number:02d}_{sanitize_filename(task.chapter_title)}.md"
+                    output_path = workspace.src_path / filename
+                    output_content = result_data.get("output", result_data.get("stdout", ""))
+                    output_path.write_text(output_content, "utf-8")
+
+                    return ChapterWriteResult(
+                        chapter_number=task.chapter_number,
+                        chapter_title=task.chapter_title,
+                        success=True,
+                        output_artifact=filename,
+                        output_content=output_content,
+                        duration_seconds=time.monotonic() - chapter_start,
+                    )
+                else:
+                    return ChapterWriteResult(
+                        chapter_number=task.chapter_number,
+                        chapter_title=task.chapter_title,
+                        success=False,
+                        error=f"Task did not complete: {refreshed.status.value if refreshed else 'unknown'}",
+                        duration_seconds=time.monotonic() - chapter_start,
+                    )
+
+            except Exception as e:
+                return ChapterWriteResult(
+                    chapter_number=task.chapter_number,
+                    chapter_title=task.chapter_title,
+                    success=False,
+                    error=str(e),
+                    duration_seconds=time.monotonic() - chapter_start,
+                )
+
+        # Run all chapter submissions concurrently
+        results = await asyncio.gather(
+            *[submit_and_wait(task) for task in tasks],
+            return_exceptions=True,
+        )
+
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                task = tasks[i]
+                chapter_results[task.chapter_number] = ChapterWriteResult(
+                    chapter_number=task.chapter_number,
+                    chapter_title=task.chapter_title,
+                    success=False,
+                    error=str(result),
+                )
+            else:
+                chapter_results[result.chapter_number] = result
+
+        return chapter_results
 
 
 class MergeLabor:
@@ -1126,11 +1272,13 @@ class PipelineEngine:
         notification_manager: Any = None,
         max_gate_retries: int = 3,
         checker_labor: Any = None,
+        task_scheduler: Any | None = None,
     ) -> None:
         self._artifact_base = Path(artifact_base)
         self._notification_manager = notification_manager
         self._max_gate_retries = max_gate_retries
         self._checker_labor = checker_labor
+        self._task_scheduler = task_scheduler
         self._labor_registry: dict[str, Any] = {
             "content": ContentLabor(),
             "format": FormatLabor(),
@@ -1273,6 +1421,7 @@ class PipelineEngine:
             labor = ParallelChapterLabor(
                 max_concurrent=stage.parallel_max_concurrent,
                 failure_threshold=stage.parallel_failure_threshold,
+                task_scheduler=self._task_scheduler,
             )
         else:
             labor = self._labor_registry.get(stage.labor_type)
