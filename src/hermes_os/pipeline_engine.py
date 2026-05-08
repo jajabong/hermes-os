@@ -421,11 +421,24 @@ class ParallelChapterLabor:
         max_concurrent: int = 5,
         failure_threshold: float = 0.5,
         task_scheduler: Any | None = None,
+        execution_mode: str = "gather",
     ) -> None:
+        """Initialize ParallelChapterLabor.
+
+        Args:
+            max_concurrent: Max concurrent chapter tasks.
+            failure_threshold: Max fraction of failed chapters before overall failure.
+            task_scheduler: Optional TaskScheduler for persistent execution with Guardian.
+            execution_mode: Execution strategy for parallel chapters.
+                - "gather": asyncio.gather + invoke() (fast, non-persistent)
+                - "scheduler": TaskScheduler via _execute_via_scheduler (persistent + Guardian)
+                - "delegate_task": hermes-agent delegate_task batch (parallel subagents)
+        """
         self._semaphore = asyncio.Semaphore(value=max_concurrent)
         self._max_concurrent = max_concurrent
         self._failure_threshold = failure_threshold
         self._task_scheduler = task_scheduler
+        self._execution_mode = execution_mode
 
     async def execute(
         self,
@@ -487,8 +500,12 @@ class ParallelChapterLabor:
 
             chapter_results: dict[int, ChapterWriteResult] = {}
 
-            # Delegate to TaskScheduler if available, otherwise use asyncio.gather
-            if self._task_scheduler:
+            # Route based on execution mode
+            if self._execution_mode == "delegate_task":
+                chapter_results = await self._execute_via_delegate_task(
+                    tasks, workspace, context
+                )
+            elif self._task_scheduler:
                 chapter_results = await self._execute_via_scheduler(
                     tasks, workspace, context
                 )
@@ -723,6 +740,116 @@ class ParallelChapterLabor:
                 chapter_results[result.chapter_number] = result
 
         return chapter_results
+
+    async def _execute_via_delegate_task(
+        self,
+        tasks: list[ChapterWriteTask],
+        workspace: PipelineWorkspace,
+        context: dict[str, Any],
+    ) -> dict[int, ChapterWriteResult]:
+        """Execute chapters via hermes-agent delegate_task batch parallel.
+
+        Uses the built-in delegate_task tool with batch mode (tasks=[]).
+        All chapters run concurrently via ThreadPoolExecutor with
+        max_concurrent_children limit (default 3).
+
+       优于 asyncio.gather: 每个子任务有独立agent上下文 + 心跳防超时
+       优于 TaskScheduler: 无需polling，批量返回结果
+        """
+        import json
+        import time
+
+        from hermes_os.outline_splitter import sanitize_filename
+
+        start = time.monotonic()
+        chapter_results: dict[int, ChapterWriteResult] = {}
+        topic = context.get("topic", "Untitled Book")
+
+        # Check hermes-agent SDK availability
+        try:
+            from hermes_agent.run_agent import AIAgent
+            from hermes_agent.tools.delegate_tool import delegate_task
+        except ImportError:
+            # Fall back to asyncio.gather if hermes-agent not available
+            return await self._execute_via_gather(tasks, workspace, context)
+
+        # Build task dicts for delegate_task batch mode
+        delegate_tasks = []
+        for task in tasks:
+            system_prompt = (
+                "You are a professional book author. "
+                "Write a complete, engaging book chapter in Chinese. "
+                "Use markdown formatting. Do not include placeholder text. "
+                "Generate substantial content (2000+ characters)."
+            )
+            delegate_tasks.append({
+                "goal": task.prompt,
+                "context": f"Book topic: {topic}\nChapter: {task.chapter_title}",
+                "toolsets": ["terminal", "file"],
+                "role": "leaf",
+            })
+
+        try:
+            # Create parent AIAgent with delegation toolset
+            agent = AIAgent(
+                base_url=_get_hermes_base_url(),
+                api_key=_get_hermes_api_key(),
+                model=context.get("model", "claude-sonnet-4-6"),
+                max_iterations=context.get("max_turns", 15) * 2,
+                ephemeral_system_prompt=(
+                    "You are a professional book author. "
+                    "Delegate chapter writing to subagents efficiently."
+                ),
+                enabled_toolsets=["delegation"],
+                verbose_logging=False,
+                quiet_mode=True,
+            )
+
+            # Call delegate_task in batch mode — runs all chapters in parallel
+            result_str = delegate_task(
+                tasks=delegate_tasks,
+                max_iterations=context.get("max_turns", 15),
+                parent_agent=agent,
+            )
+
+            result_data = json.loads(result_str)
+            results_list = result_data.get("results", [])
+
+            # Map results back to chapter numbers
+            for i, result_item in enumerate(results_list):
+                if i >= len(tasks):
+                    break
+                task = tasks[i]
+                output = result_item.get("output", result_item.get("stdout", ""))
+
+                filename = f"ch{task.chapter_number:02d}_{sanitize_filename(task.chapter_title)}.md"
+                output_path = workspace.src_path / filename
+                output_path.write_text(output, "utf-8")
+
+                chapter_results[task.chapter_number] = ChapterWriteResult(
+                    chapter_number=task.chapter_number,
+                    chapter_title=task.chapter_title,
+                    success=True,
+                    output_artifact=filename,
+                    output_content=output,
+                    duration_seconds=time.monotonic() - start,
+                )
+
+        except Exception as e:
+            # Fall back to asyncio.gather on any error
+            return await self._execute_via_gather(tasks, workspace, context)
+
+        return chapter_results
+
+
+def _get_hermes_base_url() -> str:
+    import os
+    return os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+
+
+def _get_hermes_api_key() -> str | None:
+    import os
+    return os.environ.get("ANTHROPIC_API_KEY")
 
 
 class MergeLabor:

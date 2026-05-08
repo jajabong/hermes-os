@@ -742,6 +742,134 @@ class TestParallelChapterLaborTaskScheduler:
         assert len(result.chapter_results) == 2
 
 
+class TestParallelChapterLaborDelegateTask:
+    """TDD: ParallelChapterLabor should optionally use delegate_task batch parallel.
+
+    delegate_task batch mode (hermes-agent built-in) provides:
+    - ThreadPoolExecutor-based true parallelism
+    - per-task isolation
+    - max_concurrent_children limit
+    - heartbeat to prevent gateway timeout
+    """
+
+    @pytest.mark.asyncio
+    async def test_delegate_batch_routes_to_delegate_task(self, temp_dir: Path) -> None:
+        """When execution_mode=delegate_task, _execute_via_delegate_task is called."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from hermes_os.pipeline_engine import (
+            ParallelChapterLabor,
+            PipelineWorkspace,
+        )
+
+        ws_root = temp_dir / "artifacts" / "delegate-test-001"
+        ws_root.mkdir(parents=True)
+        (ws_root / "src").mkdir()
+
+        outline_content = """## 大纲
+
+1. **第一章** — 内容1
+2. **第二章** — 内容2
+"""
+        (ws_root / "src" / "01_outline.md").write_text(outline_content, "utf-8")
+
+        ws = PipelineWorkspace(
+            task_id="delegate-test-001",
+            pipeline_name="book",
+            root_path=ws_root,
+        )
+        ws.stage_statuses = {}
+
+        labor = ParallelChapterLabor(
+            max_concurrent=3,
+            failure_threshold=0.5,
+            execution_mode="delegate_task",
+        )
+
+        mock_results = {0: MagicMock(), 1: MagicMock()}
+        mock_results[0].success = True
+        mock_results[0].output = "# Chapter 1"
+        mock_results[1].success = True
+        mock_results[1].output = "# Chapter 2"
+
+        # Mock _execute_via_delegate_task to verify it's called
+        with patch.object(
+            labor,
+            "_execute_via_delegate_task",
+            new=AsyncMock(return_value=mock_results),
+        ) as mock_delegate_task:
+            result = await labor.execute(
+                description="Write chapters",
+                input_artifact="01_outline.md",
+                workspace=ws,
+                context={"topic": "Test Book"},
+            )
+
+            # delegate_task path should have been called
+            assert mock_delegate_task.call_count == 1
+            assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_delegate_batch_falls_back_to_gather_when_no_hermes_agent(
+        self, temp_dir: Path
+    ) -> None:
+        """Without hermes_agent SDK, should fall back to asyncio.gather."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from hermes_os.pipeline_engine import (
+            ParallelChapterLabor,
+            PipelineWorkspace,
+        )
+
+        ws_root = temp_dir / "artifacts" / "fallback-test-001"
+        ws_root.mkdir(parents=True)
+        (ws_root / "src").mkdir()
+
+        outline_content = """## 大纲
+
+1. **第一章** — 内容1
+"""
+        (ws_root / "src" / "01_outline.md").write_text(outline_content, "utf-8")
+
+        ws = PipelineWorkspace(
+            task_id="fallback-test-001",
+            pipeline_name="book",
+            root_path=ws_root,
+        )
+        ws.stage_statuses = {}
+
+        labor = ParallelChapterLabor(
+            max_concurrent=3,
+            failure_threshold=0.5,
+            execution_mode="delegate_task",
+        )
+
+        mock_gather_results = {0: MagicMock()}
+        mock_gather_results[0].success = True
+        mock_gather_results[0].output = "# Chapter Content"
+
+        # Simulate hermes_agent ImportError by patching the import inside
+        # _execute_via_delegate_task. When ImportError is raised inside
+        # _execute_via_delegate_task, it internally falls back to _execute_via_gather.
+        with patch.dict("sys.modules", {"hermes_agent": None}):
+            with patch.object(
+                labor,
+                "_execute_via_gather",
+                new=AsyncMock(return_value=mock_gather_results),
+            ) as mock_gather:
+                result = await labor.execute(
+                    description="Write chapters",
+                    input_artifact="01_outline.md",
+                    workspace=ws,
+                    context={"topic": "Test Book"},
+                )
+
+        # _execute_via_gather should have been called (internally by _execute_via_delegate_task
+        # when hermes_agent import fails)
+        assert mock_gather.call_count == 1
+        assert result.success is True
+
+
 class TestPipelineStageParallel:
     """Tests for parallel fields in PipelineStage and from_yaml parsing."""
 
