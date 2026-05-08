@@ -625,13 +625,30 @@ class TaskScheduler:
             ))
 
     async def _on_task_completed(self, task_id: str) -> None:
-        """Handle task completion: update DAG parent progress, notify user, clear TopicTracker."""
+        """Handle task completion: update DAG parent progress, notify user, clear TopicTracker.
+
+        Sends completion notification for:
+        - Non-DAG tasks with notify_target (single-task completion)
+        - DAG subtasks (progress update per step)
+        - DAG parent when all steps complete (final completion)
+        """
         task = await self.get_task(task_id)
         if not task:
             return
 
         dag_id = task.metadata.get("dag_id")
+
+        # Send notification for non-DAG tasks with notify_target
+        if not dag_id and task.metadata.get("notify_target"):
+            await self._send_notification(task, status="completed", result=task.result)
+
         if not dag_id:
+            # Non-DAG task: TopicTracker cleanup only
+            try:
+                tracker = TopicTracker(user_id=task.user_id)
+                await tracker.complete_topic(task_id)
+            except Exception:
+                logger.debug("Failed to complete topic for task %s", task_id)
             return
 
         # Find DAG parent and update progress
@@ -641,6 +658,12 @@ class TaskScheduler:
         dag_parent = await self._find_dag_parent(dag_id)
         if dag_parent:
             await self._send_dag_progress_notification(dag_parent, task)
+
+        # Check if this was the last step → send DAG completion notification
+        if dag_parent and dag_parent.metadata.get("dag_completed_steps", 0) >= dag_parent.metadata.get("dag_total_steps", 0):
+            dag_parent = await self._find_dag_parent(dag_id)  # Re-fetch for updated metadata
+            if dag_parent:
+                await self._send_notification(dag_parent, status="completed", result=task.result)
 
         # Update IntentLink: advance current_step
         link = await self.get_intent_link_by_dag(dag_id)
@@ -670,13 +693,29 @@ class TaskScheduler:
             logger.debug("Failed to complete topic for task %s", task_id)
 
     async def _on_task_failed(self, task_id: str, error: str | None) -> None:
-        """Handle task failure: update IntentLink error context and retry count."""
+        """Handle task failure: update IntentLink error context, send notification, clear TopicTracker.
+
+        Sends failure notification for:
+        - Non-DAG tasks with notify_target
+        - DAG subtasks (already handled by _send_notification called after this)
+        """
         task = await self.get_task(task_id)
         if not task:
             return
 
         dag_id = task.metadata.get("dag_id")
+
+        # Send notification for non-DAG tasks with notify_target
+        if not dag_id and task.metadata.get("notify_target"):
+            await self._send_notification(task, status="failed", error=error)
+
         if not dag_id:
+            # Non-DAG task: TopicTracker cleanup only
+            try:
+                tracker = TopicTracker(user_id=task.user_id)
+                await tracker.complete_topic(task_id)
+            except Exception:
+                logger.debug("Failed to complete topic for task %s", task_id)
             return
 
         link = await self.get_intent_link_by_dag(dag_id)
@@ -1091,9 +1130,7 @@ class TaskScheduler:
 
                     # Unblock dependents
                     await self.unblock_dependents(task.task_id)
-
-                    # Send completion notification
-                    await self._send_notification(task, status="completed", result="Pipeline stage completed")
+                    # Notification handled by _on_task_completed() via update_task_status → TASK_COMPLETED event
                     continue  # skip the normal invoke() path
                 except Exception as e:
                     logger.error("PipelineTaskRunner error for task %s: %s", task.task_id, e)
@@ -1200,8 +1237,7 @@ class TaskScheduler:
                 # Unblock dependent tasks
                 newly_runnable = await self.unblock_dependents(task.task_id)
 
-                # Send notification if configured
-                await self._send_notification(task, status="completed", result=result.stdout)
+                # Notification handled by _on_task_completed() via update_task_status → TASK_COMPLETED event
 
             except InvocationError as e:
                 # Record failure in org memory
@@ -1279,9 +1315,7 @@ class TaskScheduler:
                         error=f"Guardian abort: {error_msg}",
                     )
                     await self.unblock_dependents(task.task_id)
-
-                    # Send notification if configured
-                    await self._send_notification(task, status="failed", error=error_msg)
+                    # Notification handled by _on_task_failed() via update_task_status → TASK_FAILED event
 
     async def _send_notification(
         self,
