@@ -250,8 +250,27 @@ class DelegationProtocol:
     def _jarvis_iface(self) -> JarvisInterface | None:
         return self._jarvis
 
-    def should_delegate(self, message: str) -> bool:
-        """快速判断是否应该委派。"""
+    def should_delegate(self, message: str, intent: str | None = None) -> bool:
+        """Fast check if task should be delegated.
+
+        Args:
+            message: User's message (used when intent is None for LIGHT/MEDIUM/HEAVY)
+            intent: Optional pre-classified intent from UnifiedRouter.classify_intent().
+                   When provided, uses intent-based classification (single source of truth).
+        """
+        if intent is not None:
+            # Use pre-classified intent (single source of truth, no re-classification)
+            HEAVY_INTENTS = {
+                "code",
+                "review",
+                "content",
+                "research",
+                "investment",
+                "legal",
+            }
+            MEDIUM_INTENTS = {"education", "deploy"}
+            return intent in HEAVY_INTENTS or intent in MEDIUM_INTENTS
+        # Fall back to keyword-based complexity classification
         return self._trigger.classify(message) != TaskComplexity.LIGHT
 
     async def delegate(

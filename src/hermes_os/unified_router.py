@@ -221,12 +221,19 @@ class UnifiedRouter:
         user_registry: "UserRegistry | None" = None,
         topic_tracker_factory: Callable[[str], Any] | None = None,
         delegation_protocol: "DelegationProtocol | None" = None,
+        storage: Any = None,
     ) -> None:
-        self._memory_hub_factory = memory_hub_factory or MemoryHub
         self._agent_registry = agent_registry or get_agent_registry()
         self._user_registry = user_registry  # Lazily initialized in route()
         self._topic_tracker_factory = topic_tracker_factory
         self._delegation_protocol = delegation_protocol
+        # ShardedStorage for 100-user horizontal scaling
+        self._storage = storage
+        # MemoryHub factory: creates hub with ShardedStorage injected
+        if memory_hub_factory is None:
+            self._memory_hub_factory = self._default_memory_hub_factory
+        else:
+            self._memory_hub_factory = memory_hub_factory
         # Phase 7: Preference learning — shared across turns within a session
         from hermes_os.preference_learning import StyleSignalDetector
         self._signal_detector = StyleSignalDetector()
@@ -253,6 +260,10 @@ class UnifiedRouter:
         Falls back to 'ChiefAgent' for unknown intents.
         """
         return INTENT_AGENT_MAP.get(intent, "ChiefAgent")
+
+    def _default_memory_hub_factory(self, user_id: str) -> MemoryHub:
+        """Create MemoryHub with ShardedStorage injected for 100-user scaling."""
+        return MemoryHub(user_id=user_id, storage=self._storage)
 
     async def route(self, event: GatewayEvent) -> RouteResult:
         """Execute the full routing pipeline.
@@ -365,10 +376,10 @@ class UnifiedRouter:
             except Exception as e:
                 logger.warning("[UnifiedRouter] ChiefAgent.parse_intent failed: %s", e)
 
-        # Phase 4b: Model selection (keyword + LLM hybrid)
+        # Phase 4b: Model selection (uses pre-classified intent when available)
         # Determines which model tier to use: MiniMax (cheap) vs blend (heavy)
         model_selector = ModelSelector()
-        routing_decision = await model_selector.select_model(event.message)
+        routing_decision = await model_selector.select_model(event.message, intent=intent)
         logger.info(
             "[UnifiedRouter] Model tier: %s (%s, llm_eval=%s)",
             routing_decision.tier.value,

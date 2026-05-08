@@ -159,3 +159,25 @@ class ComplexityClassifier:
         if complexity == Complexity.COMPLEX:
             return "heavy"
         return "heavy"  # Default to heavy for ambiguous, LLM will assess
+
+    def classify_by_intent(self, intent: str) -> Complexity:
+        """Classify complexity from a pre-classified intent (single source of truth).
+
+        Uses the canonical intent from UnifiedRouter.classify_intent() to determine
+        model tier, avoiding re-classification of the same message.
+        """
+        HEAVY_INTENTS = {
+            "code",
+            "review",
+            "content",
+            "research",
+            "investment",
+            "legal",
+        }
+        MEDIUM_INTENTS = {"education", "deploy"}
+
+        if intent in HEAVY_INTENTS:
+            return Complexity.COMPLEX
+        if intent in MEDIUM_INTENTS:
+            return Complexity.MODERATE
+        return Complexity.SIMPLE

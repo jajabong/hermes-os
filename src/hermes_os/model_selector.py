@@ -1,12 +1,15 @@
-"""Model Selector — hybrid complexity assessment for model routing.
+"""Model Selector — complexity-to-tier routing for model selection.
 
 Phase 1: 模型复杂度路由
 P2: LLM 评估 — 当关键词判断为 AMBIGUOUS 时，用 MiniMax 评估复杂度
 
+Single source of truth: Uses UnifiedRouter.classify_intent() result when available,
+avoiding duplicate classification. Falls back to keyword-based complexity assessment.
+
 Routing Strategy:
-- SIMPLE (keyword) → MiniMax-M2.7 (cheap, fast)
-- COMPLEX (keyword) → blend (powerful, local/single API)
-- AMBIGUOUS → MiniMax LLM 评估 → 选择 MiniMax 或 blend
+- SIMPLE intent → MiniMax-M2.7 (cheap, fast)
+- MODERATE/COMPLEX intent → blend (powerful, local/single API)
+- AMBIGUOUS (no intent) → keyword classification → MiniMax or blend
 - Fallback chain: primary → secondary → baosi (last resort)
 
 Model tier mapping:
@@ -70,16 +73,43 @@ class ModelSelector:
         self._blend_tier = ModelTier.BLEND
         self._baosi_tier = ModelTier.BAOSI
 
-    async def select_model(self, message: str) -> RoutingDecision:
+    async def select_model(
+        self,
+        message: str,
+        intent: str | None = None,
+    ) -> RoutingDecision:
         """Select appropriate model tier based on task complexity.
 
         Args:
             message: User's input message
+            intent: Optional pre-classified intent from UnifiedRouter.classify_intent().
+                   When provided, skips keyword re-classification for efficiency.
 
         Returns:
             RoutingDecision with selected tier and metadata
         """
-        # Step 1: Fast keyword-based classification
+        # Use pre-classified intent when available (single source of truth)
+        if intent is not None:
+            complexity = self._classifier.classify_by_intent(intent)
+            if complexity == Complexity.COMPLEX:
+                return RoutingDecision(
+                    tier=self._blend_tier,
+                    complexity_reason=f"Intent: {intent} → complex",
+                    needs_llm_eval=False,
+                )
+            if complexity == Complexity.MODERATE:
+                return RoutingDecision(
+                    tier=self._blend_tier,
+                    complexity_reason=f"Intent: {intent} → moderate",
+                    needs_llm_eval=False,
+                )
+            return RoutingDecision(
+                tier=self._minimax_tier,
+                complexity_reason=f"Intent: {intent} → simple",
+                needs_llm_eval=False,
+            )
+
+        # Fall back to keyword-based classification
         complexity = self._classifier.classify_by_keywords(message)
 
         if complexity == Complexity.SIMPLE:

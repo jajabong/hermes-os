@@ -292,6 +292,7 @@ class MemoryHub:
         memory_router: Any = None,
         brain_indexer: Any = None,
         brain_updater: Any = None,
+        storage: Any = None,
     ) -> None:
         self.user_id = user_id
         self.base_path = base_path or (Path.home() / ".hermes" / "users")
@@ -324,6 +325,9 @@ class MemoryHub:
 
         # Brain indexer reference for get_context
         self._brain_indexer = brain_indexer
+
+        # ShardedStorage for 100-user horizontal scaling (L3 persistence)
+        self._storage = storage
 
     async def initialize(self) -> None:
         """Initialize layers. Idempotent — safe to call multiple times."""
@@ -374,6 +378,9 @@ class MemoryHub:
         """
         if layer == "recent":
             await self._recent.store(content, metadata)
+            # Persist to shard DB for 100-user horizontal scaling
+            if self._storage is not None:
+                await self._storage.add_message(self.user_id, "user", content)
         elif layer == "knowledge":
             # L4 knowledge storage is task-output driven, not general-purpose
             logger.debug("[MemoryHub] knowledge layer storage not implemented (use BrainUpdater)")
