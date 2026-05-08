@@ -8,6 +8,7 @@ from hermes_os.agents.registry_initializer import initialize_agents
 from hermes_os.delegation_protocol import DelegationProtocol
 from hermes_os.knowledge_cli import KnowledgeCLI
 from hermes_os.router import GatewayEvent, RoutedRequest, UserRouter
+from hermes_os.task_scheduler import TaskScheduler
 from hermes_os.topic_tracker import TopicTracker
 from hermes_os.unified_router import UnifiedRouter, RouteResult
 
@@ -52,9 +53,16 @@ class HermesOSRouter:
         await self._user_router.knowledge.initialize()
         await self._cli.initialize()
 
+        # TaskScheduler for step-level continuation context (IntentLink → TopicTracker fusion)
+        task_scheduler = TaskScheduler(db_path=self._db_path)
+
         def topic_tracker_factory(user_id: str) -> TopicTracker:
             base_path = _USER_BRAIN_BASE / user_id / "brain"
-            return TopicTracker(user_id=user_id, base_path=base_path.parent)
+            return TopicTracker(
+                user_id=user_id,
+                base_path=base_path.parent,
+                task_scheduler=task_scheduler,
+            )
 
         self._delegation_protocol = DelegationProtocol(
             topic_tracker_factory=topic_tracker_factory,

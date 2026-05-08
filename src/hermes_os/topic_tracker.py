@@ -38,13 +38,19 @@ from typing import Any
 
 @dataclass
 class TopicContext:
-    """当前话题上下文 — 用于续接「上次那件事」。"""
+    """当前话题上下文 — 用于续接「上次那件事」。
+
+    当任务为 DAG parent 时，continuation_context 包含步骤级详情
+    （当前步骤、已完成数、错误信息等），由 TopicTracker.get_current_topic()
+    在检测到 dag_id 时自动填充。
+    """
 
     topic: str  # 话题描述
     task_id: str  # 关联的任务 ID
     intent: str  # 意图类型
     recorded_at: str  # ISO 时间戳
     is_incomplete: bool = True  # 是否未完成（默认 True）
+    continuation_context: dict[str, Any] | None = None  # DAG步骤级详情（可选）
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TopicContext:
@@ -54,6 +60,7 @@ class TopicContext:
             intent=data.get("intent", "unknown"),
             recorded_at=data.get("recorded_at", ""),
             is_incomplete=data.get("is_incomplete", True),
+            continuation_context=data.get("continuation_context"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -63,6 +70,7 @@ class TopicContext:
             "intent": self.intent,
             "recorded_at": self.recorded_at,
             "is_incomplete": self.is_incomplete,
+            "continuation_context": self.continuation_context,
         }
 
 
@@ -100,9 +108,15 @@ class TopicTracker:
         "接着做",
     )
 
-    def __init__(self, user_id: str, base_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        user_id: str,
+        base_path: Path | None = None,
+        task_scheduler: Any = None,
+    ) -> None:
         self.user_id = user_id
         self.base_path = base_path or (Path.home() / ".hermes" / "users")
+        self._task_scheduler = task_scheduler
 
     def _brain_path(self) -> Path:
         return self.base_path / self.user_id / "brain"
@@ -168,6 +182,9 @@ class TopicTracker:
     async def get_current_topic(self) -> TopicContext | None:
         """获取当前未完成的话题上下文。
 
+        如果 task_id 对应 DAG parent 且 task_scheduler 可用，
+        自动填充 continuation_context（含步骤级详情）。
+
         Returns:
             TopicContext 如果有未完成的话题，None 如果没有。
         """
@@ -175,10 +192,38 @@ class TopicTracker:
         if data is None:
             return None
         ctx = TopicContext.from_dict(data)
+
         # 只有未完成的话题才返回
-        if ctx.is_incomplete:
-            return ctx
-        return None
+        if not ctx.is_incomplete:
+            return None
+
+        # Enrich with DAG step-level context if task_scheduler is available
+        if self._task_scheduler is not None and ctx.task_id:
+            try:
+                task = await self._task_scheduler.get_task(ctx.task_id)
+                if task:
+                    dag_id = task.metadata.get("dag_id")
+                    if dag_id:
+                        cont = await self._task_scheduler.get_continuation_context(dag_id)
+                        if cont:
+                            ctx.continuation_context = {
+                                "dag_id": cont.dag_id,
+                                "current_step": cont.current_step,
+                                "step_title": cont.step_title,
+                                "completed_steps": cont.completed_steps,
+                                "total_steps": cont.total_steps,
+                                "completion_pct": cont.completion_pct,
+                                "pending_step_ids": cont.pending_step_ids,
+                                "last_error": cont.last_error,
+                                "error_category": cont.error_category,
+                                "retry_count": cont.retry_count,
+                                "resumption_count": cont.resumption_count,
+                            }
+            except Exception:
+                # Enrichment is best-effort — don't fail the topic lookup
+                pass
+
+        return ctx
 
     async def resume_from_topic(self) -> TopicContext | None:
         """获取可续接的话题上下文。
